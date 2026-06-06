@@ -1,4 +1,4 @@
-"""Ollama client + DB context builder for Altis Groep financial Q&A."""
+"""Ollama client + Postgres context builder for Altis Groep financial Q&A."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ SYSTEM_PROMPT = """\
 You are a financial analyst assistant for Altis Groep, a private-equity-backed \
 roofing portfolio company in the Netherlands.
 
-You have access to live data from the Altis database:
+You have access to live data from the Altis Postgres database:
 - 13-week cash flow forecast (scenarios: base / wet_qtr / dry_qtr)
 - Netherlands weather forecast (rain, frost, wind — all stop roofing work)
 - Transaction actuals from 4 accounting systems (Opco_A, Opco_B, Opco_C, Opco_D)
@@ -29,17 +29,23 @@ Cash flow drivers in the model:
 Weather thresholds that stop roofing work:
   Rain > 15 mm/day | Frost < 0 °C | Wind > Bft 6 | Heat > 28 °C
 
-Answer concisely and with specific numbers from the context provided. \
-If a question cannot be answered from the available data, say so clearly.\
+Key empirical finding: weather (r=0.12) explains only 1.4% of billing variance. \
+The main revenue driver is project-pipeline concentration in large one-off contracts.
+
+Answer concisely with specific numbers from the context. \
+If the data does not cover the question, say so clearly.\
 """
+
+
+def _fmt(val, prefix: str = "€") -> str:
+    return f"{prefix}{float(val or 0):,.0f}"
 
 
 def _build_context(scenario: str = "base", opco: str | None = None) -> str:
     con = get_connection()
     parts: list[str] = []
-
-    # --- Forecast ---
     try:
+        # --- 13-week forecast ---
         rows = query(
             con,
             "SELECT forecast_week, week_start, "
@@ -60,22 +66,20 @@ def _build_context(scenario: str = "base", opco: str | None = None) -> str:
                 cum += float(r["net"] or 0)
                 parts.append(
                     f"  Wk{r['forecast_week']} {r['week_start']}: "
-                    f"net €{float(r['net'] or 0):,.0f}  "
-                    f"[inflow €{float(r['inflow'] or 0):,.0f} | "
-                    f"outflow €{float(r['outflow'] or 0):,.0f}]  "
-                    f"d1={float(r['d1'] or 0):,.0f} "
-                    f"d2={float(r['d2'] or 0):,.0f} "
-                    f"d3={float(r['d3'] or 0):,.0f} "
-                    f"d4={float(r['d4'] or 0):,.0f} "
-                    f"d5_weather={float(r['d5'] or 0):,.0f}  "
-                    f"cum €{cum:,.0f}"
+                    f"net {_fmt(r['net'])}  "
+                    f"[in {_fmt(r['inflow'])} | out {_fmt(r['outflow'])}]  "
+                    f"d1={_fmt(r['d1'])} d2={_fmt(r['d2'])} "
+                    f"d3={_fmt(r['d3'])} d4={_fmt(r['d4'])} "
+                    f"d5_weather={_fmt(r['d5'])}  cum {_fmt(cum)}"
                 )
-    except Exception:
-        pass
 
-    # --- Weather ---
-    try:
-        weather = query(con, "SELECT * FROM weather_forecast ORDER BY iso_week LIMIT 13")
+        # --- Weather forecast ---
+        weather = query(
+            con,
+            "SELECT iso_week, week_start, temp_avg, rain_mm, frost_days, "
+            "wind_bft, risk_level, delay_days "
+            "FROM weather_forecast ORDER BY iso_week LIMIT 13",
+        )
         if weather:
             parts.append("\n## Netherlands Weather Forecast")
             for w in weather:
@@ -89,16 +93,13 @@ def _build_context(scenario: str = "base", opco: str | None = None) -> str:
                     f"delay={w.get('delay_days', 0)} days"
                 )
         else:
-            parts.append("\n## Weather\n  (no weather rows in DB — live fetch may be needed)")
-    except Exception:
-        pass
+            parts.append("\n## Weather\n  (no rows in DB — fetch via GET /api/weather)")
 
-    # --- Covenant ---
-    try:
+        # --- Bank covenant ---
         rules = query(
             con,
             "SELECT value, horizon_weeks FROM covenant_rules "
-            "WHERE threshold_type = 'min_cumulative_cashflow' LIMIT 1",
+            "WHERE threshold_type = 'min_cumulative_cashflow' ORDER BY id LIMIT 1",
         )
         threshold = float(rules[0]["value"]) if rules else -500_000.0
         horizon = int(rules[0]["horizon_weeks"]) if rules else 13
@@ -108,54 +109,50 @@ def _build_context(scenario: str = "base", opco: str | None = None) -> str:
             "SELECT SUM(net_cashflow) AS total FROM forecast_13w WHERE scenario = ?",
             [scenario],
         )
-        total_cf = float(cf[0]["total"] or 0) if cf else 0.0
+        total_cf = float((cf[0]["total"] or 0) if cf else 0)
         headroom = total_cf - threshold
-        status = "BREACH" if total_cf < threshold else ("WATCH" if headroom < abs(threshold) * 0.2 else "SAFE")
+        status = "BREACH" if total_cf < threshold else (
+            "WATCH" if headroom < abs(threshold) * 0.2 else "SAFE"
+        )
         parts.append(
             f"\n## Bank Covenant ({scenario})\n"
-            f"  Threshold: min cumulative CF ≥ €{threshold:,.0f} over {horizon} weeks\n"
-            f"  Forecast cumulative CF: €{total_cf:,.0f}\n"
-            f"  Headroom: €{headroom:,.0f}  |  Status: {status}"
+            f"  Threshold: cumulative CF ≥ {_fmt(threshold)} over {horizon} weeks\n"
+            f"  Forecast cumulative CF: {_fmt(total_cf)}\n"
+            f"  Headroom: {_fmt(headroom)}  |  Status: {status}"
         )
-    except Exception:
-        pass
 
-    # --- Actuals by opco ---
-    try:
-        actuals = query(
-            con,
-            "SELECT opco, year, SUM(credit) AS revenue, COUNT(*) AS txns "
-            "FROM transactions WHERE credit > 0 AND year >= 2024 "
-            "GROUP BY opco, year ORDER BY opco, year",
-        )
-        if actuals:
-            parts.append("\n## Transaction Actuals (2024+)")
-            for a in actuals:
-                parts.append(
-                    f"  {a['opco']} {a['year']}: "
-                    f"revenue €{float(a['revenue'] or 0):,.0f}  ({a['txns']} txns)"
-                )
-    except Exception:
-        pass
-
-    # --- All-scenario comparison (covenant status) ---
-    try:
-        all_scenarios: list[str] = []
+        # --- Scenario comparison ---
+        sc_lines = []
         for sc in ("base", "wet_qtr", "dry_qtr"):
             r = query(
                 con,
                 "SELECT SUM(net_cashflow) AS total FROM forecast_13w WHERE scenario = ?",
                 [sc],
             )
-            total = float(r[0]["total"] or 0) if r else 0.0
-            all_scenarios.append(f"  {sc}: cumulative CF €{total:,.0f}")
-        if any("€" in s for s in all_scenarios):
-            parts.append("\n## Scenario Comparison (cumulative net CF)")
-            parts.extend(all_scenarios)
-    except Exception:
-        pass
+            total = float((r[0]["total"] or 0) if r else 0)
+            sc_lines.append(f"  {sc}: cumulative CF {_fmt(total)}")
+        parts.append("\n## Scenario Comparison\n" + "\n".join(sc_lines))
 
-    con.close()
+        # --- Actuals by opco and year ---
+        actuals = query(
+            con,
+            "SELECT opco, year, SUM(credit) AS revenue, COUNT(*) AS txns "
+            "FROM transactions WHERE credit > 0 AND year >= 2023 "
+            "GROUP BY opco, year ORDER BY opco, year",
+        )
+        if actuals:
+            parts.append("\n## Historical Revenue by Opco")
+            for a in actuals:
+                parts.append(
+                    f"  {a['opco']} {a['year']}: "
+                    f"revenue {_fmt(a['revenue'])}  ({a['txns']} transactions)"
+                )
+
+    except Exception as exc:
+        parts.append(f"\n[context error: {exc}]")
+    finally:
+        con.close()
+
     return "\n".join(parts) if parts else "No data available in the database yet."
 
 
@@ -165,14 +162,14 @@ def chat(
     opco: str | None = None,
     model: str = DEFAULT_MODEL,
 ) -> str:
-    """Query local Ollama model with DB + weather context. Returns answer string."""
+    """Query local Ollama model with live DB context. Returns answer string."""
     context = _build_context(scenario=scenario, opco=opco)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
-                f"Here is the current Altis database context:\n\n{context}"
+                f"Current Altis database context:\n\n{context}"
                 f"\n\n---\nQuestion: {question}"
             ),
         },
@@ -187,11 +184,11 @@ def chat(
         return resp.json()["message"]["content"]
     except httpx.ConnectError:
         raise RuntimeError(
-            "Ollama is not running. Start it with: ollama serve  "
-            "(and pull a model first: ollama pull llama3.2)"
+            "Ollama is not running. Start it with: ollama serve "
+            "(pull a model first: ollama pull llama3.2)"
         )
     except httpx.HTTPStatusError as e:
-        raise RuntimeError(f"Ollama HTTP error: {e.response.status_code} — {e.response.text}")
+        raise RuntimeError(f"Ollama error {e.response.status_code}: {e.response.text}")
 
 
 def list_ollama_models() -> list[str]:
