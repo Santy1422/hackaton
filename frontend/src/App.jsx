@@ -17,15 +17,12 @@ const VIEW_BY_ROLE = {
 
 export default function App() {
   const { user, loading, logout } = useAuth()
-  // El onboarding se muestra una vez por sesión, tras el login.
-  const [synced, setSynced] = useState(() => sessionStorage.getItem('altis_synced') === '1')
+  // El onboarding (sync de ERPs) es "humo" de la demo: sale SIEMPRE tras login y
+  // en cada recarga. Estado sólo en memoria → no se persiste a propósito.
+  const [synced, setSynced] = useState(false)
 
-  const finishSync = () => {
-    sessionStorage.setItem('altis_synced', '1')
-    setSynced(true)
-  }
+  const finishSync = () => setSynced(true)
   const signOut = () => {
-    sessionStorage.removeItem('altis_synced')
     setSynced(false)
     logout()
   }

@@ -159,7 +159,7 @@ async def whatsapp_webhook(request: Request):
     Payload Zavu: { type, senderId, data: { from, text, channel, messageId } }.
     """
     raw = await request.body()
-    if not verify_signature(raw, request.headers.get("x-zavu-signature")):
+    if not verify_signature(raw, request.headers.get("x-zavu-signature"), dict(request.headers)):
         return {"ok": False, "reason": "invalid signature"}
 
     import json

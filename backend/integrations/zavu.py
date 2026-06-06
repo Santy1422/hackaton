@@ -9,6 +9,7 @@ Si falta ZAVU_API_KEY hace un "dry-run" (no rompe): devuelve el preview.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -18,20 +19,61 @@ import httpx
 ZAVU_URL = "https://api.zavu.dev/v1/messages"
 
 
-def verify_signature(raw_body: bytes, signature: str | None) -> bool:
-    """Verifica el header `x-zavu-signature` (HMAC-SHA256 del body crudo, hex).
+def verify_signature(raw_body: bytes, signature: str | None, headers: dict | None = None) -> bool:
+    """Verifica el header `x-zavu-signature`. Robusto a varios esquemas.
 
-    Si no hay ZAVU_WEBHOOK_SECRET configurado, no se verifica (modo dev → True).
-    Tolera el prefijo `sha256=`. Confirmar el esquema exacto en la Security guide de Zavu.
+    Sin ZAVU_WEBHOOK_SECRET → no verifica (dev → True). Con secret, acepta si
+    el HMAC-SHA256 coincide bajo cualquiera de estas combinaciones:
+      - clave: secret tal cual · (si `whsec_…`) base64-decode del resto · resto en texto
+      - mensaje: body crudo · estilo Svix `{id}.{ts}.{body}` · `{ts}.{body}`
+      - encoding: hex · base64
+    Cubre tanto HMAC plano como el esquema Svix (prefijo `whsec_`).
     """
     secret = os.getenv("ZAVU_WEBHOOK_SECRET")
     if not secret:
         return True
     if not signature:
         return False
-    sig = signature.split("=", 1)[1] if signature.startswith("sha256=") else signature
-    expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, sig.strip())
+    headers = {k.lower(): v for k, v in (headers or {}).items()}
+
+    # tokens de firma (Svix: "v1,<b64> v1,<b64>"; o "sha256=<hex>"; o plano).
+    # No partir por "=" a lo bruto: el padding base64 lleva "=".
+    tokens = {signature.strip()}
+    for item in signature.strip().split():
+        it = item.strip()
+        if "," in it:  # estilo Svix "v1,<sig>"
+            tokens.add(it.split(",", 1)[1])
+        elif it.startswith(("sha256=", "sha1=")):
+            tokens.add(it.split("=", 1)[1])
+        else:
+            tokens.add(it)
+
+    keys = [secret.encode()]
+    if secret.startswith("whsec_"):
+        rest = secret[len("whsec_"):]
+        keys.append(rest.encode())
+        try:
+            keys.append(base64.b64decode(rest))
+        except Exception:
+            pass
+
+    wid = headers.get("webhook-id") or headers.get("x-zavu-id") or headers.get("zavu-id")
+    wts = (headers.get("webhook-timestamp") or headers.get("x-zavu-timestamp")
+           or headers.get("zavu-timestamp"))
+    msgs = [raw_body]
+    if wid and wts:
+        msgs.append(f"{wid}.{wts}.".encode() + raw_body)
+    if wts:
+        msgs.append(f"{wts}.".encode() + raw_body)
+
+    for k in keys:
+        for m in msgs:
+            mac = hmac.new(k, m, hashlib.sha256).digest()
+            for cand in (mac.hex(), base64.b64encode(mac).decode()):
+                for t in tokens:
+                    if hmac.compare_digest(cand, t.strip()):
+                        return True
+    return False
 # Sender ID por defecto (perfil "Decilo App"); overridable por env.
 DEFAULT_SENDER = "kd7fv57av8kwqgncjzckcrnnn9885nv4"
 
