@@ -22,8 +22,8 @@ from .m5_weather import compute_delay_weeks, fetch_weather_forecast
 
 SCENARIOS = {
     "base": {"revenue_mult": 1.00, "dso_mult": 1.00, "weather_active": True},
-    "wet_qtr": {"revenue_mult": 0.80, "dso_mult": 1.25, "weather_active": True, "extra_rain_mm": 18},
-    "dry_qtr": {"revenue_mult": 1.15, "dso_mult": 0.80, "weather_active": False},
+    "wet_qtr": {"revenue_mult": 0.78, "dso_mult": 1.30, "weather_active": True, "extra_rain_mm": 18},
+    "dry_qtr": {"revenue_mult": 1.20, "dso_mult": 0.75, "weather_active": False},
 }
 
 OPCOS = ["Opco_A", "Opco_B", "Opco_C", "Opco_D"]

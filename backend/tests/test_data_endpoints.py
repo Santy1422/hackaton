@@ -34,6 +34,39 @@ def test_opcos_forbidden_for_scoped_roles(client, auth_headers):
     assert client.get("/api/opcos", headers=auth_headers(LEAD)).status_code == 403
 
 
+def test_opcos_are_four_real_companies(client, auth_headers):
+    """Cada opco = una empresa real con su sistema contable (no splits de IVA)."""
+    opcos = client.get("/api/opcos", headers=auth_headers(CFO)).json()["opcos"]
+    by_id = {o["id"]: o for o in opcos}
+    # las 4 empresas reales del portfolio
+    assert {"Opco_A", "Opco_B", "Opco_C", "Opco_D"} <= set(by_id)
+    # cada una trae nombre real (≠ id) y sistema contable
+    for o in opcos:
+        assert o["name"] and o["name"] != o["id"]
+        assert o["system"] in ("Snelstart", "Exact", "Gilde", "Yuki")
+        assert o["transactions"] > 0 and o["revenue"] > 0
+    # los 4 sistemas del brief están representados, uno por opco
+    assert {o["system"] for o in opcos} == {"Snelstart", "Exact", "Gilde", "Yuki"}
+
+
+# --- /insights/billing-drivers ----------------------------------------------
+def test_insights_requires_auth(client):
+    assert client.get("/api/insights/billing-drivers").status_code == 401
+
+
+def test_insights_billing_drivers_shape(client, auth_headers):
+    r = client.get("/api/insights/billing-drivers", headers=auth_headers(CFO))
+    assert r.status_code == 200
+    d = r.json()
+    assert {"finding", "weather_correlation", "annual_totals", "project_categories"} <= set(d)
+    assert d["weather_correlation"]["r_squared"] < 0.1  # clima no mueve el billing
+    assert all(float(v) > 0 for v in d["annual_totals"].values())
+
+
+def test_insights_forbidden_for_scoped_roles(client, auth_headers):
+    assert client.get("/api/insights/billing-drivers", headers=auth_headers(MD)).status_code == 403
+
+
 # --- /sources ---------------------------------------------------------------
 def test_sources_requires_auth(client):
     assert client.get("/api/sources").status_code == 401

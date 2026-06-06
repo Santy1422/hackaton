@@ -23,6 +23,9 @@ Rules:
 - You are given the real figures as JSON. Use ONLY those numbers, verbatim. NEVER invent or recompute.
 - Answer in 1-4 short sentences, WhatsApp tone — concise, no markdown headers, at most light *bold*.
 - If asked something the data doesn't cover, say so briefly.
+- A formatted PDF report is sent automatically right after your message. NEVER say you
+  can't create PDFs/files/charts — just give the analysis; if they asked for the PDF, say
+  it's on its way.
 - Covenant floor is the threshold; status SAFE/WATCH/BREACH reflects worst-case headroom."""
 
 
