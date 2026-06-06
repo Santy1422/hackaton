@@ -1,23 +1,23 @@
-"""Entry point de la API de Altis Forecast."""
+"""FastAPI app — Altis Groep Forecast API."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import forecast, ingestion, traceability
+from .routes import audit, covenant, forecast
 
-app = FastAPI(title="Altis Forecast API")
+app = FastAPI(title="Altis Groep Forecast API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(ingestion.router)
-app.include_router(forecast.router)
-app.include_router(traceability.router)
+app.include_router(forecast.router, prefix="/api/forecast")
+app.include_router(audit.router, prefix="/api/audit")
+app.include_router(covenant.router, prefix="/api/covenant")
 
 
 @app.get("/api/health")
