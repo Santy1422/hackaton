@@ -12,11 +12,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
 import os
 
 import httpx
 
 ZAVU_URL = "https://api.zavu.dev/v1/messages"
+
+log = logging.getLogger("zavu")
 
 
 def verify_signature(raw_body: bytes, signature: str | None, headers: dict | None = None) -> bool:
