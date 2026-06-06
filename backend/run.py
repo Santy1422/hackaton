@@ -1,8 +1,9 @@
 """Entry point.
 
 Usage:
-  python run.py ingest    # parse xlsx files → DuckDB
+  python run.py ingest    # parse xlsx files → Postgres (transactions)
   python run.py model     # run all 5 models → forecast_13w
+  python run.py seed      # seed the 4 role-based users
   python run.py serve     # start FastAPI on port 8000
   python run.py all       # ingest + model + serve
 """
@@ -11,6 +12,12 @@ import sys
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
+
+    if cmd == "seed":
+        from db.seed_users import seed_users
+
+        users = seed_users()
+        print(f"✅ Seeded {len(users)} users")
 
     if cmd in ("ingest", "all"):
         from ingestion.reconcile import reconcile_all

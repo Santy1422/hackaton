@@ -5,10 +5,11 @@ Traza cada driver → assumption → GL accounts → source rows → source file
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from db.database import get_connection, query
 
+from ..auth import require_roles
 from ..validation import not_computed, validate_scenario, validate_week
 
 router = APIRouter(tags=["audit"])
@@ -27,7 +28,9 @@ def _source_rows(con, iso_week: int) -> list[dict]:
 
 
 @router.get("/week/{scenario}/{week}")
-def get_audit(scenario: str, week: int):
+def get_audit(
+    scenario: str, week: int, user: dict = Depends(require_roles("pe_board", "cfo"))
+):
     validate_scenario(scenario)
     validate_week(week)
     con = get_connection()

@@ -6,10 +6,17 @@ from datetime import date, datetime
 
 import pandas as pd
 
-from db.database import get_connection
+from db.database import copy_rows, execute, get_connection, init_schema
 
 from .gb_snelstart import ingest_gb_files
 from .peter_ummels import ingest_pu_files
+
+TX_COLS = [
+    "id", "date", "period", "doc_number", "journal", "gl_account",
+    "debet", "credit", "net_amount", "description", "project_code",
+    "btw_type", "driver", "gl_label", "system", "opco", "source_file",
+    "year", "month", "iso_week",
+]
 
 GL_DRIVER_MAP = {
     "8000": {"driver": "milestone_billing", "btw_type": "hoog_21pct", "label": "Omzet hoog 21% BTW"},
@@ -57,6 +64,7 @@ def reconcile_all(raw_dir: str = "data/raw/") -> int:
     `reconciliation_log`.
     """
     con = get_connection()
+    init_schema(con)
     frames = [ingest_gb_files(raw_dir), ingest_pu_files(raw_dir)]
     df = pd.concat([f for f in frames if not f.empty], ignore_index=True)
     if df.empty:
@@ -65,14 +73,20 @@ def reconcile_all(raw_dir: str = "data/raw/") -> int:
     df = _enrich(df).reset_index(drop=True)
     df.insert(0, "id", range(1, len(df) + 1))
 
-    con.execute("DELETE FROM transactions")
-    con.register("df_tx", df)
-    con.execute("INSERT INTO transactions BY NAME SELECT * FROM df_tx")
+    # Limpia tipos para COPY: NaN/NA -> None, datetime -> date
+    out = df[TX_COLS].copy()
+    out["date"] = pd.to_datetime(out["date"]).dt.date
+    out = out.astype(object).where(pd.notna(out), None)
+
+    execute(con, "DELETE FROM transactions")
+    copy_rows(con, "transactions", TX_COLS, out.itertuples(index=False, name=None))
 
     _seed_gl_mapping(con)
     _seed_covenant_rules(con)
 
-    con.execute(
+    execute(con, "DELETE FROM reconciliation_log")
+    execute(
+        con,
         "INSERT INTO reconciliation_log (id, source_file, rows_inserted, errors) "
         "VALUES (1, 'ALL', ?, NULL)",
         [len(df)],
@@ -83,9 +97,10 @@ def reconcile_all(raw_dir: str = "data/raw/") -> int:
 
 def _seed_gl_mapping(con) -> None:
     """Carga gl_mapping desde GL_DRIVER_MAP (reviewable por un controller)."""
-    con.execute("DELETE FROM gl_mapping")
+    execute(con, "DELETE FROM gl_mapping")
     for gl, m in GL_DRIVER_MAP.items():
-        con.execute(
+        execute(
+            con,
             "INSERT INTO gl_mapping (gl_account, label, driver, btw_type, reviewed_by) "
             "VALUES (?, ?, ?, ?, 'llm_auto')",
             [gl, m["label"], m["driver"], m["btw_type"]],
@@ -94,8 +109,9 @@ def _seed_gl_mapping(con) -> None:
 
 def _seed_covenant_rules(con) -> None:
     """Umbral de covenant (min cumulative cashflow 13w) según spec."""
-    con.execute("DELETE FROM covenant_rules")
-    con.execute(
+    execute(con, "DELETE FROM covenant_rules")
+    execute(
+        con,
         "INSERT INTO covenant_rules (id, threshold_type, value, horizon_weeks, description) "
-        "VALUES (1, 'min_cumulative_cashflow', -500000, 13, 'Min cumulative cashflow over 13 weeks')"
+        "VALUES (1, 'min_cumulative_cashflow', -500000, 13, 'Min cumulative cashflow over 13 weeks')",
     )

@@ -90,6 +90,18 @@ CREATE TABLE IF NOT EXISTS forecast_13w (
     computed_at           TIMESTAMP DEFAULT current_timestamp
 );
 
+-- Users (auth + role-based views)
+CREATE TABLE IF NOT EXISTS users (
+    id               SERIAL PRIMARY KEY,
+    email            VARCHAR UNIQUE NOT NULL,
+    full_name        VARCHAR,
+    password_hash    VARCHAR NOT NULL,
+    role             VARCHAR NOT NULL,   -- 'pe_board' | 'cfo' | 'opco_md' | 'project_lead'
+    opco             VARCHAR,            -- NULL for pe_board/cfo; 'Opco_A'..'Opco_D' for opco_md/project_lead
+    is_active        BOOLEAN DEFAULT TRUE,
+    created_at       TIMESTAMP DEFAULT current_timestamp
+);
+
 -- Reconciliation log (every ingestion transformation)
 CREATE TABLE IF NOT EXISTS reconciliation_log (
     id               INTEGER PRIMARY KEY,

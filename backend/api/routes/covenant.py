@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from db.database import get_connection, query
 
+from ..auth import require_roles
 from ..validation import SCENARIOS, not_computed, validate_scenario
 
 router = APIRouter(tags=["covenant"])
@@ -51,7 +52,9 @@ def _scenario_series(con, scenario: str, threshold: float) -> tuple[list[dict], 
 
 
 @router.get("/{scenario}")
-def get_covenant(scenario: str):
+def get_covenant(
+    scenario: str, user: dict = Depends(require_roles("pe_board", "cfo"))
+):
     validate_scenario(scenario)
     con = get_connection()
     rules = query(

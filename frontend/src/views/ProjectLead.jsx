@@ -18,8 +18,8 @@ const RISK_BADGE = {
   low: 'bg-emerald-100 text-emerald-700',
 }
 
-export default function ProjectLead({ scenario }) {
-  const [opco, setOpco] = useState('Opco_B')
+export default function ProjectLead({ scenario, lockedOpco }) {
+  const [opco, setOpco] = useState(lockedOpco || 'Opco_B')
   const fc = useForecastOpco(scenario, opco)
   const weather = useApi('/weather', [])
   const milestones = useApi(`/milestones/${opco}`, [opco])
@@ -32,21 +32,28 @@ export default function ProjectLead({ scenario }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        {OPCOS.map((o) => (
-          <button
-            key={o}
-            onClick={() => setOpco(o)}
-            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-              opco === o
-                ? 'border-violet-600 bg-violet-50 text-violet-700'
-                : 'border-slate-200 bg-white text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
+      {lockedOpco ? (
+        <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-700">
+          <span className="text-xs uppercase text-violet-400">Tu opco</span>
+          {lockedOpco}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {OPCOS.map((o) => (
+            <button
+              key={o}
+              onClick={() => setOpco(o)}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                opco === o
+                  ? 'border-violet-600 bg-violet-50 text-violet-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="mb-1 font-semibold text-slate-700">

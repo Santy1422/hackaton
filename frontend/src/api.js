@@ -1,11 +1,56 @@
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-export async function apiGet(path) {
-  const res = await fetch(`${API}/api${path}`)
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    throw new Error(body?.detail?.message || body?.message || res.statusText)
+// --- Token storage (JWT bearer) ----------------------------------------------
+const TOKEN_KEY = 'altis_token'
+
+export const getToken = () => localStorage.getItem(TOKEN_KEY)
+export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t)
+export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
+
+function authHeaders() {
+  const t = getToken()
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
+// Códigos 401 que significan "tu token ya no sirve" → cerrar sesión.
+const TOKEN_DEAD = new Set([
+  'TOKEN_EXPIRED',
+  'INVALID_TOKEN',
+  'NOT_AUTHENTICATED',
+  'USER_INACTIVE',
+])
+
+function apiError(res, body) {
+  // El backend usa el envelope `{ detail: { code, message, hint } }`.
+  const detail = body?.detail || body
+  const e = new Error(detail?.message || res.statusText)
+  e.code = detail?.code
+  e.status = res.status
+  e.hint = detail?.hint
+
+  // Token muerto: limpiar y avisar a la app (AuthContext escucha el evento).
+  if (res.status === 401 && getToken() && TOKEN_DEAD.has(e.code)) {
+    clearToken()
+    window.dispatchEvent(new Event('auth:logout'))
   }
+  return e
+}
+
+export async function apiGet(path) {
+  const res = await fetch(`${API}/api${path}`, { headers: { ...authHeaders() } })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw apiError(res, body)
+  return body
+}
+
+export async function apiPost(path, payload) {
+  const res = await fetch(`${API}/api${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw apiError(res, body)
   return body
 }
 

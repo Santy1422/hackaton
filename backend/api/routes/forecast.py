@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from db.database import get_connection, query
 
+from ..auth import enforce_opco_scope, get_current_user, require_roles
 from ..validation import not_computed, validate_opco, validate_scenario, validate_week
 
 router = APIRouter(tags=["forecast"])
@@ -32,9 +33,9 @@ def _with_cumulative(weeks: list[dict]) -> list[dict]:
     return weeks
 
 
-# 1. GET /forecast/{scenario}
+# 1. GET /forecast/{scenario}  — consolidado cross-opco: sólo pe_board / cfo
 @router.get("/{scenario}")
-def get_forecast(scenario: str):
+def get_forecast(scenario: str, user: dict = Depends(require_roles("pe_board", "cfo"))):
     validate_scenario(scenario)
     con = get_connection()
     weeks = query(
@@ -57,11 +58,14 @@ def get_forecast(scenario: str):
     return {"scenario": scenario, "weeks": weeks, "totals": totals}
 
 
-# 2. GET /forecast/{scenario}/{opco}
+# 2. GET /forecast/{scenario}/{opco}  — cualquier rol; scoped sólo su opco
 @router.get("/{scenario}/{opco}")
-def get_forecast_opco(scenario: str, opco: str):
+def get_forecast_opco(
+    scenario: str, opco: str, user: dict = Depends(get_current_user)
+):
     validate_scenario(scenario)
     validate_opco(opco)
+    enforce_opco_scope(user, opco)
     con = get_connection()
     weeks = query(
         con,
@@ -87,9 +91,11 @@ def get_forecast_opco(scenario: str, opco: str):
     return {"scenario": scenario, "opco": opco, "portfolio_share_pct": pct, "weeks": weeks}
 
 
-# 3. GET /forecast/week/{scenario}/{week}
+# 3. GET /forecast/week/{scenario}/{week}  — desglose portfolio: pe_board / cfo
 @router.get("/week/{scenario}/{week}")
-def get_forecast_week(scenario: str, week: int):
+def get_forecast_week(
+    scenario: str, week: int, user: dict = Depends(require_roles("pe_board", "cfo"))
+):
     validate_scenario(scenario)
     validate_week(week)
     con = get_connection()

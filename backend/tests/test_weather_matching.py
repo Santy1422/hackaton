@@ -1,6 +1,6 @@
 """Test de exactitud del matching transactions(Excel) ↔ weather, por iso_week.
 
-Mide, sobre datos reales en DuckDB:
+Mide, sobre datos reales en Postgres:
   1. Cobertura      — toda semana del forecast tiene su fila de clima
   2. Fechas         — week_start coincide entre forecast_13w y weather_forecast
   3. iso_week join  — el iso_week del clima == iso_week del forecast
@@ -8,6 +8,7 @@ Mide, sobre datos reales en DuckDB:
   5. Consistencia   — m5_delay_weeks ≈ delay_days/7
 
 Imprime un score /100. No inventa: todo se calcula de la base.
+Se salta si el forecast aún no fue computado (`python run.py model`).
 """
 
 from __future__ import annotations
@@ -15,14 +16,17 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-os.environ.setdefault(
-    "DUCKDB_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "altis_forecast.duckdb"),
-)
-
 from db.database import get_connection, query  # noqa: E402
+
+
+def test_weather_matching():
+    """Wrapper pytest: exige score perfecto del matching."""
+    score = run()
+    assert score == 100.0, f"matching score {score} < 100"
 
 
 def run() -> float:
@@ -35,8 +39,9 @@ def run() -> float:
     )
     wf = {r["iso_week"]: r for r in query(con, "SELECT * FROM weather_forecast")}
 
-    assert fc_weeks, "forecast_13w vacío — corré `python run.py model` primero"
-    assert wf, "weather_forecast vacío"
+    if not fc_weeks or not wf:
+        con.close()
+        pytest.skip("forecast/weather sin computar — corré `python run.py model`")
 
     # 1. Cobertura
     covered = [w for w in fc_weeks if w["iso_week"] in wf]

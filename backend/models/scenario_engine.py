@@ -1,6 +1,6 @@
 """Combina M1-M5 para los 3 escenarios y escribe en `forecast_13w`.
 
-Implementación cohesiva: lee actuals de DuckDB, deriva seasonal_index,
+Implementación cohesiva: lee actuals de Postgres, deriva seasonal_index,
 proyecta 13 semanas por driver y opco, y persiste con audit trail.
 
 Regla crítica: cada fila guarda sus supuestos (m1_assumption, ...). Ese es
@@ -13,6 +13,8 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+
+from db.database import execute, executemany, query
 
 from .m3_subcon import PAYMENT_TERMS_DAYS, SUBCON_RATIO
 from .m4_collections import DSO_DAYS
@@ -31,7 +33,7 @@ TERM_WEEKS = {"net14": 2, "net30": 4, "net60": 8}
 
 def _forecast_start(con) -> date:
     """Primer lunes posterior a la última transacción."""
-    mx = con.execute("SELECT MAX(date) FROM transactions").fetchone()[0]
+    mx = query(con, "SELECT MAX(date) AS m FROM transactions")[0]["m"]
     if mx is None:
         mx = date(2026, 6, 2)
     return mx + timedelta(days=(7 - mx.weekday()) % 7 or 7)
@@ -70,10 +72,11 @@ def run_all_scenarios(db_conn) -> int:
     Devuelve el número de filas escritas.
     """
     con = db_conn
-    weekly = con.execute(
+    weekly = pd.DataFrame(query(
+        con,
         "SELECT year, iso_week, opco, SUM(credit) AS rev, SUM(debet) AS cost "
-        "FROM transactions GROUP BY year, iso_week, opco"
-    ).fetchdf()
+        "FROM transactions GROUP BY year, iso_week, opco",
+    ))
     weekly["rev"] = weekly["rev"].astype(float)
     weekly["cost"] = weekly["cost"].astype(float)
 
@@ -84,7 +87,7 @@ def run_all_scenarios(db_conn) -> int:
     alpha, beta, r2 = _fit_materials(weekly)
 
     def _n(x: float) -> float:
-        """nan/inf -> 0.0 para no romper el cast en DuckDB."""
+        """nan/inf -> 0.0 para no romper el cast en Postgres."""
         return 0.0 if (x is None or np.isnan(x) or np.isinf(x)) else float(x)
 
     # base weekly billing por opco (media 2025)
@@ -102,21 +105,23 @@ def run_all_scenarios(db_conn) -> int:
     )
 
     # persistir seasonal_index + weather_forecast
-    con.execute("DELETE FROM seasonal_index")
+    execute(con, "DELETE FROM seasonal_index")
     for iso, idx in seasonal.items():
-        con.execute(
+        execute(
+            con,
             "INSERT INTO seasonal_index (iso_week, seasonal_index) VALUES (?, ?) "
             "ON CONFLICT DO NOTHING",
             [iso, round(idx, 4)],
         )
-    con.execute("DELETE FROM weather_forecast")
+    execute(con, "DELETE FROM weather_forecast")
     for fw, iso, ws in weeks:
         w = weather.get(iso, {})
         delay = compute_delay_weeks(
             float(w.get("rain_mm", 0)), int(w.get("frost_days", 0)), float(w.get("wind_bft", 0))
         )
         risk = "high" if delay > 0.25 else "medium" if delay > 0 else "low"
-        con.execute(
+        execute(
+            con,
             "INSERT INTO weather_forecast (iso_week, week_start, temp_avg, rain_mm, "
             "frost_days, wind_bft, risk_level, delay_days, source) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
@@ -125,7 +130,7 @@ def run_all_scenarios(db_conn) -> int:
              int(round(delay * 7)), w.get("source", "nl-normals")],
         )
 
-    con.execute("DELETE FROM forecast_13w")
+    execute(con, "DELETE FROM forecast_13w")
     rows = []
     rid = 0
     for scenario, params in SCENARIOS.items():
@@ -197,7 +202,8 @@ def run_all_scenarios(db_conn) -> int:
                     dso, round(delays[i], 1),
                 ))
 
-    con.executemany(
+    executemany(
+        con,
         "INSERT INTO forecast_13w (id, scenario, forecast_week, iso_week, week_start, opco, "
         "seasonal_index, d1_milestone_billing, d2_materials_outflow, d3_subcon_payment, "
         "d4_customer_collection, d5_weather_impact, gross_inflow, gross_outflow, net_cashflow, "

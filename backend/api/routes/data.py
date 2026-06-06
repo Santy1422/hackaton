@@ -5,20 +5,25 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from db.database import get_connection, query
 
+from ..auth import enforce_opco_scope, get_current_user, require_roles
 from ..validation import err, validate_opco
 
 router = APIRouter(tags=["data"])
 
 
-# 6. GET /wip/{opco}
+# 6. GET /wip/{opco}  — opco_md (su opco) + pe_board / cfo (cualquiera)
 @router.get("/wip/{opco}")
-def get_wip(opco: str):
+def get_wip(
+    opco: str,
+    user: dict = Depends(require_roles("pe_board", "cfo", "opco_md")),
+):
     validate_opco(opco)
+    enforce_opco_scope(user, opco)
     con = get_connection()
     summary = query(
         con,
@@ -55,9 +60,14 @@ def get_wip(opco: str):
     }
 
 
-# 7. GET /weather
+# 7. GET /weather  — cualquier usuario autenticado (no es opco-específico)
 @router.get("/weather")
-def get_weather(weeks: int = 13, lat: float = 52.37, lon: float = 4.89):
+def get_weather(
+    weeks: int = 13,
+    lat: float = 52.37,
+    lon: float = 4.89,
+    user: dict = Depends(get_current_user),
+):
     con = get_connection()
     rows = query(con, "SELECT * FROM weather_forecast ORDER BY iso_week LIMIT ?", [weeks])
     con.close()
@@ -93,10 +103,11 @@ def get_weather(weeks: int = 13, lat: float = 52.37, lon: float = 4.89):
         )
 
 
-# 8. GET /milestones/{opco}
+# 8. GET /milestones/{opco}  — project_lead/opco_md (su opco) + pe_board / cfo
 @router.get("/milestones/{opco}")
-def get_milestones(opco: str):
+def get_milestones(opco: str, user: dict = Depends(get_current_user)):
     validate_opco(opco)
+    enforce_opco_scope(user, opco)
     con = get_connection()
     rows = query(
         con,
@@ -111,22 +122,25 @@ def get_milestones(opco: str):
     return {"opco": opco, "milestones": rows}
 
 
-# 9. GET /actuals/monthly
+# 9. GET /actuals/monthly  — consolidado cross-opco: pe_board / cfo
 @router.get("/actuals/monthly")
-def get_actuals_monthly(from_year: int = 2024):
+def get_actuals_monthly(
+    from_year: int = 2024,
+    user: dict = Depends(require_roles("pe_board", "cfo")),
+):
     con = get_connection()
     rows = query(
         con,
         "SELECT DATE_TRUNC('month', date) AS month, opco, SUM(credit) AS revenue, "
         "COUNT(DISTINCT doc_number) AS invoice_count FROM transactions "
-        "WHERE YEAR(date) >= ? AND credit > 0 "
+        "WHERE EXTRACT(YEAR FROM date)::int >= ? AND credit > 0 "
         "GROUP BY DATE_TRUNC('month', date), opco ORDER BY month, opco",
         [from_year],
     )
     yearly = query(
         con,
-        "SELECT YEAR(date) AS y, SUM(credit) AS total FROM transactions "
-        "WHERE credit > 0 GROUP BY YEAR(date) ORDER BY y",
+        "SELECT EXTRACT(YEAR FROM date)::int AS y, SUM(credit) AS total FROM transactions "
+        "WHERE credit > 0 GROUP BY EXTRACT(YEAR FROM date)::int ORDER BY y",
     )
     con.close()
     months: dict[str, dict] = {}
@@ -141,10 +155,14 @@ def get_actuals_monthly(from_year: int = 2024):
     return {"from_year": from_year, "months": list(months.values()), "yoy": yoy}
 
 
-# 10. GET /actuals/weekly/{opco}
+# 10. GET /actuals/weekly/{opco}  — opco_md (su opco) + pe_board / cfo
 @router.get("/actuals/weekly/{opco}")
-def get_actuals_weekly(opco: str):
+def get_actuals_weekly(
+    opco: str,
+    user: dict = Depends(require_roles("pe_board", "cfo", "opco_md")),
+):
     validate_opco(opco)
+    enforce_opco_scope(user, opco)
     con = get_connection()
     rows = query(
         con,
@@ -158,9 +176,9 @@ def get_actuals_weekly(opco: str):
     return {"opco": opco, "weeks": rows}
 
 
-# 11. GET /stats
+# 11. GET /stats  — cualquier usuario autenticado (KPIs de cabecera)
 @router.get("/stats")
-def get_stats():
+def get_stats(user: dict = Depends(get_current_user)):
     con = get_connection()
     tx = query(
         con,
@@ -194,9 +212,9 @@ def get_stats():
     }
 
 
-# 12. GET /gl-mapping
+# 12. GET /gl-mapping  — gobierno de datos: cfo
 @router.get("/gl-mapping")
-def get_gl_mapping():
+def get_gl_mapping(user: dict = Depends(require_roles("cfo"))):
     con = get_connection()
     mappings = query(con, "SELECT * FROM gl_mapping ORDER BY gl_account")
     con.close()
@@ -212,7 +230,11 @@ class GLMappingUpdate(BaseModel):
 
 
 @router.put("/gl-mapping/{gl_account}")
-def update_gl_mapping(gl_account: str, body: GLMappingUpdate):
+def update_gl_mapping(
+    gl_account: str,
+    body: GLMappingUpdate,
+    user: dict = Depends(require_roles("cfo")),
+):
     con = get_connection()
     existing = query(con, "SELECT gl_account FROM gl_mapping WHERE gl_account = ?", [gl_account])
     if not existing:
@@ -244,7 +266,10 @@ class RecomputeOptions(BaseModel):
 
 
 @router.post("/recompute")
-def recompute(options: RecomputeOptions | None = None):
+def recompute(
+    options: RecomputeOptions | None = None,
+    user: dict = Depends(require_roles("cfo")),
+):
     start = time.perf_counter()
     warnings: list[str] = []
     rows_written = 0

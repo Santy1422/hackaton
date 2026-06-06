@@ -18,10 +18,6 @@ import sys
 from datetime import date
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-os.environ.setdefault(
-    "DUCKDB_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "altis_forecast.duckdb"),
-)
 
 import httpx  # noqa: E402
 import numpy as np  # noqa: E402
@@ -49,8 +45,9 @@ def weekly_billing() -> dict[tuple[int, int], float]:
     con = get_connection()
     rows = query(
         con,
-        "SELECT isoyear(date) iy, week(date) iw, SUM(credit) rev FROM transactions "
-        "WHERE credit > 0 AND isoyear(date) IN (2024, 2025) GROUP BY 1, 2",
+        "SELECT EXTRACT(ISOYEAR FROM date)::int iy, EXTRACT(WEEK FROM date)::int iw, "
+        "SUM(credit) rev FROM transactions "
+        "WHERE credit > 0 AND EXTRACT(ISOYEAR FROM date)::int IN (2024, 2025) GROUP BY 1, 2",
     )
     con.close()
     return {(int(r["iy"]), int(r["iw"])): float(r["rev"]) for r in rows}

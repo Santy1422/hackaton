@@ -12,8 +12,8 @@ import { eur, OPCOS } from '../api'
 import { useApi, useForecastOpco } from '../hooks/useForecast'
 import KpiCard from '../components/KpiCard'
 
-export default function OpcoMD({ scenario }) {
-  const [opco, setOpco] = useState('Opco_B')
+export default function OpcoMD({ scenario, lockedOpco }) {
+  const [opco, setOpco] = useState(lockedOpco || 'Opco_B')
   const fc = useForecastOpco(scenario, opco)
   const wip = useApi(`/wip/${opco}`, [opco])
 
@@ -25,21 +25,28 @@ export default function OpcoMD({ scenario }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        {OPCOS.map((o) => (
-          <button
-            key={o}
-            onClick={() => setOpco(o)}
-            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-              opco === o
-                ? 'border-violet-600 bg-violet-50 text-violet-700'
-                : 'border-slate-200 bg-white text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
+      {lockedOpco ? (
+        <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-700">
+          <span className="text-xs uppercase text-violet-400">Tu opco</span>
+          {lockedOpco}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {OPCOS.map((o) => (
+            <button
+              key={o}
+              onClick={() => setOpco(o)}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                opco === o
+                  ? 'border-violet-600 bg-violet-50 text-violet-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      )}
 
       {s && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
