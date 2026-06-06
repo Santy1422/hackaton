@@ -34,7 +34,8 @@ export default function Assistant() {
       const res = await apiPost('/notify/ask', { question: text })
       setMsgs((m) => [...m, { role: 'bot', text: res.answer || '—' }])
     } catch (e) {
-      setMsgs((m) => [...m, { role: 'bot', text: `⚠ ${e.message || 'assistant unavailable'}`, err: true }])
+      const msg = e.hint ? `${e.message} — ${e.hint}` : e.message || 'assistant unavailable'
+      setMsgs((m) => [...m, { role: 'bot', text: `⚠ ${msg}`, err: true }])
     } finally {
       setBusy(false)
       requestAnimationFrame(() => bodyRef.current?.scrollTo(0, 1e6))
