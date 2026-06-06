@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiPost } from '../api'
 
 /**
@@ -18,6 +18,11 @@ export default function Assistant() {
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
   const bodyRef = useRef(null)
+
+  // Mantén la conversación pegada al fondo: al enviar, al responder y al escribir.
+  useEffect(() => {
+    bodyRef.current?.scrollTo(0, 1e6)
+  }, [msgs, busy])
 
   const ask = async (question) => {
     const text = (question ?? q).trim()

@@ -89,7 +89,13 @@ export default function Login() {
             </div>
             <div className="lf-demo-grid">
               {DEMO_USERS.map((u) => (
-                <button key={u.email} className="lf-user" onClick={() => pick(u)} type="button">
+                <button
+                  key={u.email}
+                  className={'lf-user' + (email === u.email ? ' on' : '')}
+                  onClick={() => pick(u)}
+                  type="button"
+                  aria-pressed={email === u.email}
+                >
                   <span className="lf-av">{u.initials}</span>
                   <span className="lf-u-meta">
                     <b>{u.title.split(' · ')[0]}</b>

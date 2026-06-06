@@ -13,7 +13,13 @@ export default function AuditModal({ scenario, week, weekObj, onClose }) {
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Bloquea el scroll del fondo mientras el modal está abierto.
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
   }, [onClose])
 
   const w = weekObj || {}

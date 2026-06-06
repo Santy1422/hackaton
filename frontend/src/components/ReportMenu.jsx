@@ -23,8 +23,10 @@ export default function ReportMenu({ scenario = 'base' }) {
   // Manda la alerta de covenant (armada en el backend desde la DB) por WhatsApp/Zavu.
   const sendWhatsApp = async () => {
     setOpen(false)
-    const to = window.prompt('WhatsApp number (E.164, e.g. +5491155551234):')
+    const last = localStorage.getItem('altis_wa_to') || ''
+    const to = window.prompt('WhatsApp number (E.164, e.g. +5491155551234):', last)
     if (!to) return
+    localStorage.setItem('altis_wa_to', to.trim())
     setBusy(true)
     try {
       const r = await apiPost(`/notify/covenant/${scenario}`, { to: to.trim() })

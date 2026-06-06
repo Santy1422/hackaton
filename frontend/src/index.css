@@ -338,6 +338,8 @@ code {
 .lf-demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .lf-user { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--hair); border-radius: 11px; padding: 9px 11px; cursor: pointer; text-align: left; transition: 0.15s; }
 .lf-user:hover { border-color: var(--copper); }
+.lf-user.on { border-color: var(--copper); background: #fdf3ee; box-shadow: 0 0 0 3px rgba(192, 85, 46, 0.1); }
+.lf-user.on .lf-av { background: var(--copper); color: #fff; }
 .lf-av { width: 30px; height: 30px; flex: none; border-radius: 8px; background: var(--ink); color: #cdd8e1; display: grid; place-items: center; font-family: var(--mono); font-size: 10px; font-weight: 700; }
 .lf-u-meta { display: flex; flex-direction: column; min-width: 0; }
 .lf-u-meta b { font-size: 12.5px; font-weight: 700; }
