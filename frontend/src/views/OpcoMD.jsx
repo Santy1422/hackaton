@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useApi, useForecastOpco } from '../hooks/useForecast'
-import { COLORS, SCENARIOS, opcoMeta, eur, eurK, signed, sumKey } from '../altis/format'
+import { COLORS, SCENARIOS, eur, eurK, signed, sumKey } from '../altis/format'
 import { Panel, Kpi, Skeleton, Empty, ChartTip } from '../components/primitives'
 import OpcoTabs from '../components/OpcoTabs'
 
@@ -18,7 +18,6 @@ const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 export default function OpcoMD({ scenario, lockedOpco }) {
   const [opco, setOpco] = useState(lockedOpco || 'Opco_B')
   const oId = lockedOpco || opco
-  const o = opcoMeta(oId)
   const fc = useForecastOpco(scenario, oId)
   const wip = useApi(`/wip/${oId}`, [oId])
 
@@ -42,7 +41,7 @@ export default function OpcoMD({ scenario, lockedOpco }) {
         />
       </div>
 
-      <Panel title={'Net cash · 13 weeks · ' + o.name} hint={SCENARIOS[scenario]?.label + ' scenario'}>
+      <Panel title={'Net cash · 13 weeks · ' + oId} hint={SCENARIOS[scenario]?.label + ' scenario'}>
         {fc.loading ? (
           <Skeleton height={250} />
         ) : (

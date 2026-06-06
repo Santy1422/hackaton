@@ -62,14 +62,12 @@ export const SCENARIOS = {
 }
 export const SCENARIO_KEYS = ['base', 'wet_qtr', 'dry_qtr']
 
-// ---- opco display metadata (real ids → roofing identities) ----------------
-export const OPCOS = [
-  { id: 'Opco_A', name: 'Van der Berg Dakwerken', city: 'Rotterdam' },
-  { id: 'Opco_B', name: 'Mulder Dak & Gevel', city: 'Eindhoven' },
-  { id: 'Opco_C', name: 'Noord Roofing BV', city: 'Groningen' },
-  { id: 'Opco_D', name: 'Janssen Platdak', city: 'Utrecht' },
-]
-export const opcoMeta = (id) => OPCOS.find((o) => o.id === id) || { id, name: id, city: '' }
+// ---- opcos ----------------------------------------------------------------
+// La data del challenge está anonimizada: el id (Opco_A..D) ES la identidad.
+// La lista viva llega de /api/opcos (useOpcos); esto es sólo un fallback de ids
+// si la API no responde. Sin nombres/ciudades inventados.
+export const OPCO_FALLBACK = ['Opco_A', 'Opco_B', 'Opco_C', 'Opco_D']
+export const sharePct = (share) => (share != null ? `${Math.round(share * 100)}% of revenue` : '')
 
 // ---- weather --------------------------------------------------------------
 export const WEATHER_GLYPH = { high: '🌧', medium: '⛅', low: '☀' }

@@ -4,8 +4,8 @@ import { useAuth } from '../auth/AuthContext'
 const DEMO_USERS = [
   { email: 'cfo@altis.com', title: 'Group CFO', initials: 'SB', scope: 'Consolidated · all opcos' },
   { email: 'board@altis.com', title: 'PE Board · Investment Director', initials: 'PdV', scope: 'Portfolio · covenant oversight' },
-  { email: 'md@altis.com', title: 'Managing Director', initials: 'JM', scope: 'Van der Berg · Rotterdam' },
-  { email: 'lead@altis.com', title: 'Project Lead', initials: 'EJ', scope: 'Van der Berg · field' },
+  { email: 'md@altis.com', title: 'Managing Director', initials: 'JM', scope: 'Opco_A · operating company' },
+  { email: 'lead@altis.com', title: 'Project Lead', initials: 'EJ', scope: 'Opco_A · field' },
 ]
 const DEMO_PASSWORD = 'altis2025'
 
@@ -55,8 +55,8 @@ export default function Login() {
           <div className="lb-eyebrow">WEATHER-AWARE 13-WEEK LIQUIDITY</div>
           <h1>The forecast the finance team opens on a Monday — not a spreadsheet.</h1>
           <p>
-            One reconciled data foundation across Gilde, Yuki, Exact &amp; Snelstart. Five cash drivers.
-            Three scenarios. Every figure traces back to its source.
+            One reconciled data foundation across your accounting systems. Five cash drivers. Three
+            scenarios. Every figure traces back to its source.
           </p>
         </div>
         <div className="lb-weather">

@@ -201,6 +201,35 @@ def get_sources(user: dict = Depends(get_current_user)):
     }
 
 
+# GET /opcos  — lista real de operating companies (data-driven, no hardcode).
+# Soporta "alta de nueva opco = cambio de datos, no de código".
+@router.get("/opcos")
+def get_opcos(user: dict = Depends(require_roles("pe_board", "cfo"))):
+    con = get_connection()
+    rows = query(
+        con,
+        "SELECT opco, COUNT(*) AS transactions, "
+        "SUM(CASE WHEN credit > 0 THEN credit ELSE 0 END) AS revenue, "
+        "MAX(date) AS last_activity FROM transactions "
+        "WHERE opco IS NOT NULL GROUP BY opco ORDER BY opco",
+    )
+    con.close()
+    total_rev = sum(float(r["revenue"] or 0) for r in rows) or 1.0
+    return {
+        "opcos": [
+            {
+                "id": r["opco"],
+                "name": r["opco"],
+                "transactions": int(r["transactions"] or 0),
+                "revenue": round(float(r["revenue"] or 0), 2),
+                "share": round(float(r["revenue"] or 0) / total_rev, 4),
+                "last_activity": r["last_activity"],
+            }
+            for r in rows
+        ]
+    }
+
+
 # 11. GET /stats  — cualquier usuario autenticado (KPIs de cabecera)
 @router.get("/stats")
 def get_stats(user: dict = Depends(get_current_user)):

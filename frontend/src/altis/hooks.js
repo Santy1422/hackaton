@@ -1,6 +1,13 @@
 import { useMemo } from 'react'
 import { useApi } from '../hooks/useForecast'
-import { mergeWeeks, statusFromWeeks } from './format'
+import { mergeWeeks, statusFromWeeks, OPCO_FALLBACK } from './format'
+
+/** Lista real de operating companies (data-driven, /api/opcos). */
+export function useOpcos() {
+  const { data, loading, error } = useApi('/opcos', [])
+  const opcos = data?.opcos || OPCO_FALLBACK.map((id) => ({ id, name: id }))
+  return { opcos, loading, error }
+}
 
 /**
  * One scenario's 13 weeks in the design shape: real forecast drivers merged

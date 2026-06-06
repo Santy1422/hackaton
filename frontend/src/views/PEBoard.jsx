@@ -9,7 +9,8 @@ import {
   YAxis,
 } from 'recharts'
 import { useCovenant, useApi, useStats } from '../hooks/useForecast'
-import { COLORS, COVENANT_THRESHOLD, OPCOS, eurK } from '../altis/format'
+import { useOpcos } from '../altis/hooks'
+import { COLORS, COVENANT_THRESHOLD, eurK, sharePct } from '../altis/format'
 import { Panel, StatBox, Skeleton, ChartTip } from '../components/primitives'
 import CovenantCard from '../components/CovenantCard'
 import SavingsPanel from '../components/SavingsPanel'
@@ -21,6 +22,10 @@ export default function PEBoard() {
   const wet = useCovenant('wet_qtr')
   const dry = useCovenant('dry_qtr')
   const { data: stats } = useStats()
+  const { data: sources } = useApi('/sources', [])
+  const systemsLabel = sources?.systems?.length
+    ? sources.systems.map((s) => s.system).join(' · ')
+    : 'reconciled into one schema'
 
   const all = base.data?.all_scenarios
   const threshold = base.data?.covenant_threshold || COVENANT_THRESHOLD
@@ -54,7 +59,7 @@ export default function PEBoard() {
         <StatBox
           rows={[
             { label: 'Portfolio revenue 2025', value: eurK(rev.total_2025), sub: delta },
-            { label: 'Reconciled transactions', value: stats?.transactions?.total_rows?.toLocaleString() || '—', sub: 'Gilde · Yuki · Exact · Snelstart' },
+            { label: 'Reconciled transactions', value: stats?.transactions?.total_rows?.toLocaleString() || '—', sub: systemsLabel },
             { label: 'GL accounts mapped', value: stats?.transactions?.gl_accounts_mapped ?? '—', sub: 'controller-reviewed' },
           ]}
         />
@@ -100,14 +105,21 @@ export default function PEBoard() {
       </Panel>
 
       <Panel title="Operating companies">
-        <div className="opco-cards">
-          {OPCOS.map((o) => (
-            <OpcoCard key={o.id} opco={o} />
-          ))}
-        </div>
+        <OpcoCards />
       </Panel>
 
       <SavingsPanel />
+    </div>
+  )
+}
+
+function OpcoCards() {
+  const { opcos } = useOpcos()
+  return (
+    <div className="opco-cards">
+      {opcos.map((o) => (
+        <OpcoCard key={o.id} opco={o} />
+      ))}
     </div>
   )
 }
@@ -117,8 +129,8 @@ function OpcoCard({ opco }) {
   const s = data?.summary
   return (
     <div className="opco-card">
-      <div className="oc-name">{opco.name}</div>
-      <div className="oc-city">{opco.city}</div>
+      <div className="oc-name">{opco.name || opco.id}</div>
+      <div className="oc-city">{sharePct(opco.share) || `${(opco.transactions || 0).toLocaleString()} txns`}</div>
       <div className="oc-stats">
         <div>
           <span>WIP</span>

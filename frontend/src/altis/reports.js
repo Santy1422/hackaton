@@ -5,7 +5,7 @@
    methodology + audit trail. Uses html2pdf.
    ============================================================================ */
 import html2pdf from 'html2pdf.js'
-import { apiGet } from '../api'
+import { apiGet, apiPost } from '../api'
 import {
   DRIVERS,
   DRIVER_COLORS,
@@ -77,10 +77,13 @@ function reportStyles() {
   `
 }
 
-function buildReport(kind, scenario, packs) {
+function buildReport(kind, scenario, packs, narrative = {}, meta = {}) {
   const cur = packs[scenario]
   const W = cur.weeks
   const sLabel = SCENARIOS[scenario].label
+  const opcoLabel = meta.opcoCount ? `${meta.opcoCount} OPCOS` : 'CONSOLIDATED'
+  const systemsLabel = meta.systems?.length ? meta.systems.join(' · ') : 'your accounting systems'
+  const glLabel = meta.glMapped != null ? `${meta.glMapped} GL accounts mapped` : 'GL accounts mapped'
   const genDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   const isWeekly = kind === 'weekly'
   const w13 = W[W.length - 1] || {}
@@ -93,18 +96,30 @@ function buildReport(kind, scenario, packs) {
   const last = w13.week_start
   const range = first && last ? `${first} – ${last}` : `13-WEEK HORIZON`
 
+  // Prosa redactada por Claude (sobre datos reales) con fallback determinista.
+  const execText =
+    narrative.executive_summary ||
+    `Over the next 13 weeks the portfolio is projected to ${totalNet >= 0 ? 'generate' : 'consume'} ${signed(totalNet)} of net cash, ending at ${eur(w13.cumulative_cf)}. Materials and subcontractors are paid ahead of collections, so cash dips to a financed low of ${eur(lowWeek.cumulative_cf)} in week ${lowWeek.week} before recovering. Worst-case covenant headroom is ${eur(finalHeadroom)} — status ${status}.`
+  const scnText =
+    narrative.scenario_commentary ||
+    'Weather changes when the firm bills and collects, not what it has already committed to pay. A wet quarter delays and shrinks collections; a dry quarter pulls them forward.'
+  const covText = narrative.covenant_commentary || ''
+  const risks = Array.isArray(narrative.risks) ? narrative.risks : []
+  const reco = narrative.recommendation || ''
+  const aiTag = narrative.source && !String(narrative.source).startsWith('fallback') ? ' · NARRATED BY CLAUDE' : ''
+
   const band = `<div class="band">
     <div>
       <div class="mk"><span class="roof"></span><span class="bn">ALTIS <span>FORECAST</span></span></div>
       <h1>${isWeekly ? 'Weekly Cash-Flow Report' : 'Monthly Cash-Flow Report'}</h1>
-      <div class="meta">13-WEEK HORIZON · ${String(range).toUpperCase()} · CONSOLIDATED · 4 OPCOS</div>
+      <div class="meta">13-WEEK HORIZON · ${String(range).toUpperCase()} · CONSOLIDATED · ${opcoLabel}</div>
     </div>
     <div class="rt"><div class="lab">SCENARIO</div><div class="scn">${sLabel}</div><div class="meta" style="margin-top:8px">GENERATED ${genDate.toUpperCase()}</div></div>
   </div>`
 
   const summary = `<div class="pg">
-    <h2>Executive summary <span class="h2x">WHAT THIS REPORT SAYS</span></h2>
-    <p class="lead">Over the next 13 weeks the portfolio is projected to ${totalNet >= 0 ? 'generate' : 'consume'} <b class="${totalNet >= 0 ? 'pos' : 'neg'}">${signed(totalNet)}</b> of net cash, ending at <b>${eur(w13.cumulative_cf)}</b>. Because roofing firms pay for materials and subcontractors <b>ahead</b> of collecting on milestones, cash dips into a financed trough mid-horizon — reaching its low of <b class="${lowWeek.cumulative_cf < 0 ? 'neg' : ''}">${eur(lowWeek.cumulative_cf)}</b> in week ${lowWeek.week} — before collections pull it back. Against the bank covenant floor of −€500k, worst-case headroom is <b>${eur(finalHeadroom)}</b>, giving a status of <b>${status}</b> under the ${sLabel} scenario.</p>
+    <h2>Executive summary <span class="h2x">WHAT THIS REPORT SAYS${aiTag}</span></h2>
+    <p class="lead">${execText}</p>
     <div class="kpis">
       <div class="kpi"><div class="l">Ending cash · W13</div><div class="v">${eurK(w13.cumulative_cf)}</div><div class="s">cumulative 13-week</div></div>
       <div class="kpi g"><div class="l">Net · 13 weeks</div><div class="v ${totalNet >= 0 ? 'pos' : 'neg'}">${eurK(totalNet)}</div><div class="s">all drivers</div></div>
@@ -119,6 +134,7 @@ function buildReport(kind, scenario, packs) {
       <div class="badge ${statusClass}">${status}</div>
       <div class="txt">The covenant requires cumulative cash to stay above <b>−€500,000</b> at all times across the 13-week horizon. The forecast low of <b>${eur(lowWeek.cumulative_cf)}</b> in <b>week ${lowWeek.week}</b> leaves <b class="${finalHeadroom < 0 ? 'neg' : 'pos'}">${eur(finalHeadroom)}</b> of headroom. ${status === 'BREACH' ? 'This <b>breaches</b> the covenant — the board should expect a waiver conversation or a draw on the revolver to bridge the trough.' : status === 'WATCH' ? 'This is <b>within €200k of the floor</b> — flagged for monitoring; a single slipped milestone or a wet fortnight would tip it.' : 'This sits <b>comfortably clear</b> of the floor under current assumptions.'}</div>
     </div>
+    ${covText ? `<p class="lead">${covText}</p>` : ''}
   </div>`
 
   let detail
@@ -208,20 +224,29 @@ function buildReport(kind, scenario, packs) {
   }).join('')
   const scenarios = `<div class="pg">
     <h2>Scenario comparison <span class="h2x">BASE · WET QUARTER · DRY QUARTER</span></h2>
-    <p class="lead">Weather changes <b>when</b> the firm bills and collects, not what it has already committed to pay. A wet quarter delays and shrinks collections; a dry quarter pulls them forward. Materials and subcontractor outflows are held to the build plan ahead of the weather.</p>
+    <p class="lead">${scnText}</p>
     <table class="scn-tbl">
       <thead><tr><th>Scenario</th><th>Ending cash</th><th>Low point</th><th>Headroom</th><th style="text-align:right">Status</th></tr></thead>
       <tbody>${scnRows}</tbody>
     </table>
   </div>`
 
+  const outlook =
+    risks.length || reco
+      ? `<div class="pg">
+    <h2>Risks &amp; recommendation <span class="h2x">${aiTag ? 'CLAUDE' : 'TREASURY'} ASSESSMENT</span></h2>
+    ${risks.length ? `<ul style="margin:8px 0 4px 18px">${risks.map((r) => `<li class="lead" style="margin:4px 0">${r}</li>`).join('')}</ul>` : ''}
+    ${reco ? `<p class="lead"><b>Recommendation —</b> ${reco}</p>` : ''}
+  </div>`
+      : ''
+
   const foot = `<div class="pg"><div class="foot">
     <b>METHODOLOGY</b> — Drivers: M1 milestone billing (seasonal index × run-rate × scenario, gated by workable days) · M2 materials (OLS lag on billing) · M3 subcontractors (≈20% on net terms) · M4 collections (billing shifted by DSO) · M5 weather (rain&gt;15mm / freeze / wind&gt;Bft6 defer cash).<br/>
-    <b>DATA FOUNDATION</b> — Transactions reconciled from Gilde · Yuki · Exact · Snelstart into one schema; GL accounts mapped (controller-reviewed). Single source of truth: <b>forecast_13w</b>. Every figure traces back to its drivers, assumptions and source rows via the dashboard audit trail.<br/>
+    <b>DATA FOUNDATION</b> — Transactions reconciled from ${systemsLabel} into one schema; ${glLabel} (controller-reviewed). Single source of truth: <b>forecast_13w</b>. Every figure traces back to its drivers, assumptions and source rows via the dashboard audit trail.<br/>
     <b>NOTE</b> — Anonymised demo data, hackathon use only. Generated ${genDate}.
   </div></div>`
 
-  return `<div id="rpt">${band}${summary}${covenant}${detail}${bars}${drivers}<div class="html2pdf__page-break"></div>${scenarios}${foot}</div>`
+  return `<div id="rpt">${band}${summary}${covenant}${detail}${bars}${drivers}<div class="html2pdf__page-break"></div>${scenarios}${outlook}${foot}</div>`
 }
 
 let BUSY = false
@@ -247,12 +272,32 @@ export async function generateReport(kind, scenario) {
     )
     if (!packs[scenario]) throw new Error('No forecast data available')
 
+    // Narrativa redactada por Claude sobre datos reales de la DB (best-effort).
+    let narrative = {}
+    try {
+      const res = await apiPost('/reports/narrative', { scenario, kind })
+      narrative = res?.narrative || {}
+    } catch {
+      /* sin narrativa → buildReport usa el fallback templado */
+    }
+
+    // Metadata real (sistemas, opcos, GL) — sin hardcode en el documento.
+    const [sources, opcos] = await Promise.all([
+      apiGet('/sources').catch(() => null),
+      apiGet('/opcos').catch(() => null),
+    ])
+    const meta = {
+      opcoCount: opcos?.opcos?.length,
+      systems: sources?.systems?.map((s) => s.system) || [],
+      glMapped: sources?.gl_accounts_mapped,
+    }
+
     const style = document.createElement('style')
     style.textContent = reportStyles()
     document.head.appendChild(style)
     const holder = document.createElement('div')
     holder.style.cssText = 'position:fixed;left:-9999px;top:0;'
-    holder.innerHTML = buildReport(kind, scenario, packs)
+    holder.innerHTML = buildReport(kind, scenario, packs, narrative, meta)
     document.body.appendChild(holder)
     const fname = `Altis-${kind === 'weekly' ? 'Weekly' : 'Monthly'}-CashFlow-${SCENARIOS[scenario].label.replace(/\s/g, '')}.pdf`
 

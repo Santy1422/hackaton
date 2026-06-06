@@ -90,8 +90,11 @@ export default function AuditModal({ scenario, week, weekObj, onClose }) {
             {data.audit_metadata && (
               <div className="modal-trace">
                 {data.audit_metadata.total_source_transactions?.toLocaleString()} source transactions ·{' '}
-                {data.audit_metadata.gl_accounts_mapped} GL accounts mapped across Gilde · Yuki · Exact ·
-                Snelstart · single source of truth: <code>forecast_13w</code>
+                {data.audit_metadata.gl_accounts_mapped} GL accounts mapped
+                {data.audit_metadata.systems_reconciled
+                  ? ` across ${data.audit_metadata.systems_reconciled} reconciled systems`
+                  : ''}{' '}
+                · single source of truth: <code>forecast_13w</code>
               </div>
             )}
           </>
