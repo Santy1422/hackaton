@@ -1,0 +1,6 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "deploy": {
+    "startCommand": "npx -y serve -s dist -l $PORT"
+  }
+}

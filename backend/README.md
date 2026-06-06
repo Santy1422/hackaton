@@ -29,7 +29,8 @@ API: http://localhost:8000 · Docs: http://localhost:8000/docs · Health: `/api/
 ## Tests
 
 ```bash
-pytest -q          # suite completa
+pip install -r requirements-dev.txt   # pytest + pyflakes (solo dev)
+pytest -q                             # suite completa
 ```
 
 ## Variables de entorno

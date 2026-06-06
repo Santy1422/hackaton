@@ -198,7 +198,8 @@ class TestMeEndpoint:
         assert r.json()["detail"]["code"] == "TOKEN_EXPIRED"
 
     def test_me_with_token_signed_by_wrong_secret(self, client, seeded):
-        token = jwt.encode({"sub": "1", "role": "cfo"}, "WRONG_SECRET", algorithm=JWT_ALGORITHM)
+        # secret incorrecto pero de longitud válida (≥32 bytes) para no emitir warning
+        token = jwt.encode({"sub": "1", "role": "cfo"}, "wrong-secret-" + "x" * 32, algorithm=JWT_ALGORITHM)
         r = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert r.status_code == 401
         assert r.json()["detail"]["code"] == "INVALID_TOKEN"
