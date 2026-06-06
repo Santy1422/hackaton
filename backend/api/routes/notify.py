@@ -71,8 +71,8 @@ class AskBody(BaseModel):
 
 
 @router.post("/whatsapp")
-def notify_whatsapp(body: WhatsAppBody, user: dict = Depends(require_roles("pe_board", "cfo"))):
-    """Envío directo de un mensaje de WhatsApp."""
+def notify_whatsapp(body: WhatsAppBody, user: dict = Depends(get_current_user)):
+    """Envío directo de un mensaje de WhatsApp (cualquier usuario autenticado)."""
     return send_whatsapp(body.to, body.text)
 
 
@@ -141,7 +141,7 @@ def set_automation(body: AutomationToggle, user: dict = Depends(get_current_user
 
 
 @router.post("/ask")
-def ask(body: AskBody, user: dict = Depends(require_roles("pe_board", "cfo"))):
+def ask(body: AskBody, user: dict = Depends(get_current_user)):
     """Pregunta sobre el forecast respondida por Claude (opcionalmente por WhatsApp)."""
     text = answer_question(body.question)
     out = {"question": body.question, "answer": text}

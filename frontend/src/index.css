@@ -468,6 +468,9 @@ code {
 .wb b { font-weight: 700; }
 .wb-sys { color: #3c4954; }
 .wb-tr { font-size: 8.5px; color: #7a8a80; text-align: right; margin-top: 2px; font-family: var(--mono); }
+.wa-ask { display: flex; gap: 6px; padding: 9px; border-top: 1px solid #d9e6dc; background: #f6f1e7; }
+.wa-ask .wa-input { font-family: var(--sans); font-size: 12.5px; padding: 8px 11px; }
+.wa-ask .wa-btn { padding: 8px 14px; font-size: 12.5px; }
 .wa-cron { display: flex; flex-direction: column; gap: 8px; }
 .wa-cron-h { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--ink-faint); }
 .cron { display: flex; align-items: center; gap: 11px; text-align: left; background: #fff; border: 1px solid var(--hair); border-radius: 11px; padding: 10px 12px; cursor: pointer; transition: .15s; }

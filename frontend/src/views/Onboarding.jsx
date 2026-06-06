@@ -224,14 +224,16 @@ export default function Onboarding({ user, onDone }) {
 function WhatsAppActivate() {
   const [st, setSt] = useState('idle') // idle | connecting | active
   const [phone, setPhone] = useState('')
+  const [err, setErr] = useState(null)
+  const [messages, setMessages] = useState([]) // {dir:'in'|'out', text, note?}
+  const [draft, setDraft] = useState('')
+  const [sending, setSending] = useState(false)
   const base = useApi('/covenant/base', [])
-  const wet = useApi('/covenant/wet_qtr', [])
 
   // Crons 100% del backend: catálogo + estado persistido por usuario.
   const autos = useApi('/notify/automations', [])
   const [crons, setCrons] = useState([])
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autos.data?.automations) setCrons(autos.data.automations)
   }, [autos.data])
   const toggle = (id) => {
@@ -239,20 +241,64 @@ function WhatsAppActivate() {
     setCrons((cs) => cs.map((c) => (c.id === id ? { ...c, enabled: next } : c)))
     apiPost('/notify/automations', { id, enabled: next }).catch(() => {})
   }
-  const activate = () => {
-    setSt('connecting')
-    setTimeout(() => setSt('active'), 1600)
+
+  const welcomeText = () => {
+    const s = base.data?.summary
+    return s
+      ? `🏠 Altis Forecast connected. Covenant (base): ${eurK(s.final_headroom)} headroom — ${s.status}. Ask me anything about the 13-week cash forecast.`
+      : '🏠 Altis Forecast connected. Ask me anything about the 13-week cash forecast.'
   }
 
-  if (st === 'idle') {
+  // Activación REAL: manda un WhatsApp al número via /notify/whatsapp (Zavu).
+  const activate = async () => {
+    const to = phone.trim()
+    if (!to) return
+    setErr(null)
+    setSt('connecting')
+    const text = welcomeText()
+    try {
+      const r = await apiPost('/notify/whatsapp', { to, text })
+      if (r?.sent === false) {
+        // backend en dry-run (sin ZAVU_API_KEY) → avisamos en vez de fingir
+        setErr(r.reason || 'WhatsApp no configurado en el backend (dry-run).')
+        setSt('idle')
+        return
+      }
+      setMessages([{ dir: 'in', text, note: 'delivered' }])
+      setSt('active')
+    } catch (e) {
+      setErr(e.message || 'No se pudo enviar el WhatsApp')
+      setSt('idle')
+    }
+  }
+
+  // Pregunta REAL al asistente (Claude sobre forecast_13w) + push al WhatsApp.
+  const send = async () => {
+    const q = draft.trim()
+    if (!q || sending) return
+    setDraft('')
+    setMessages((m) => [...m, { dir: 'out', text: q }])
+    setSending(true)
+    try {
+      const r = await apiPost('/notify/ask', { question: q, to: phone.trim() })
+      setMessages((m) => [...m, { dir: 'in', text: r.answer, note: r?.result?.sent === false ? '' : 'delivered' }])
+    } catch (e) {
+      setMessages((m) => [...m, { dir: 'in', text: 'No pude responder: ' + (e.message || e) }])
+    } finally {
+      setSending(false)
+    }
+  }
+
+  if (st === 'idle' || st === 'connecting') {
+    const busy = st === 'connecting'
     return (
       <div className="wa">
         <div className="wa-head">
           <span className="wa-ic">💬</span>
           <div>
-            <div className="wa-title">Get it on WhatsApp <span className="wa-tag">OPTIONAL</span></div>
+            <div className="wa-title">Get it on WhatsApp <span className="wa-tag">LIVE</span></div>
             <div className="wa-sub">
-              Ask the forecast questions in plain language and schedule automatic pushes. Powered by an MCP
+              Ask the forecast in plain language and schedule automatic pushes. Powered by an MCP
               wired straight to <code>forecast_13w</code> — same single source of truth.
             </div>
           </div>
@@ -263,27 +309,25 @@ function WhatsAppActivate() {
           <li>Read-only &amp; role-scoped — it never writes back to the ledgers</li>
         </ul>
         <div className="wa-row">
-          <input className="wa-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+31 6 …" aria-label="WhatsApp number" />
-          <button className="wa-btn" onClick={activate} disabled={!phone.trim()}>Activate on WhatsApp</button>
+          <input
+            className="wa-input"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+31 6 1234 5678"
+            aria-label="WhatsApp number"
+            disabled={busy}
+            onKeyDown={(e) => e.key === 'Enter' && activate()}
+          />
+          <button className="wa-btn" onClick={activate} disabled={busy || !phone.trim()}>
+            {busy ? 'Sending…' : 'Activate on WhatsApp'}
+          </button>
         </div>
+        {err && <div className="lf-err" style={{ marginTop: 10 }}>{err}</div>}
       </div>
     )
   }
 
-  if (st === 'connecting') {
-    return (
-      <div className="wa connecting">
-        <span className="pl-spin" />
-        <div>Sending a WhatsApp to <b>{phone}</b>… opening a chat with the Altis assistant.</div>
-      </div>
-    )
-  }
-
-  // active — chat preview con datos reales + cron schedule
-  const bs = base.data?.summary
-  const ws = wet.data?.summary
-  const threshold = base.data?.covenant_threshold
-  const minCum = bs && threshold != null ? bs.min_headroom + threshold : null
+  // active — chat interactivo real + cron schedule
   return (
     <div className="wa active">
       <div className="wa-grid">
@@ -294,23 +338,24 @@ function WhatsAppActivate() {
           </div>
           <div className="wa-chat">
             <div className="wa-day">TODAY</div>
-            <div className="wb in"><span className="wb-sys">🏠 Connected. Ask me anything about the 13-week cash forecast — or I’ll push it on a schedule.</span></div>
-            <div className="wb out">Covenant headroom this week?</div>
-            <div className="wb in">
-              {bs ? (
-                <>
-                  Base scenario: <b>{eurK(bs.final_headroom)}</b> headroom — status <b>{bs.status}</b>. Cash dips
-                  to {eurK(minCum)} in week {bs.min_headroom_week}.
-                  {ws ? <> A wet quarter would {ws.status === 'BREACH' ? <b> breach</b> : ' sit'} at {eurK(ws.final_headroom)}.</> : null}
-                </>
-              ) : (
-                'Your 13-week forecast is live — ask for headroom, a driver, or a scenario and I’ll answer with the full trace.'
-              )}
-              <div className="wb-tr">08:41 ✓✓</div>
-            </div>
-            <div className="wb out">Send the weekly PDF every Monday</div>
-            <div className="wb in">Done ✓ Weekly report scheduled — <b>Mondays 08:00</b>. I’ll also ping you if any scenario flips to BREACH.<div className="wb-tr">08:41 ✓✓</div></div>
+            {messages.map((m, i) => (
+              <div key={i} className={'wb ' + m.dir}>
+                {m.text}
+                {m.note && <div className="wb-tr">{m.note === 'delivered' ? '✓✓' : m.note}</div>}
+              </div>
+            ))}
+            {sending && <div className="wb in"><span className="pl-spin" /></div>}
           </div>
+          <form className="wa-ask" onSubmit={(e) => { e.preventDefault(); send() }}>
+            <input
+              className="wa-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Ask the forecast…"
+              aria-label="Ask the forecast"
+            />
+            <button className="wa-btn" type="submit" disabled={sending || !draft.trim()}>Send</button>
+          </form>
         </div>
         <div className="wa-cron">
           <div className="wa-cron-h">SCHEDULED AUTOMATIONS</div>
