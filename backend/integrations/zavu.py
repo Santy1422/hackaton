@@ -23,70 +23,57 @@ log = logging.getLogger("zavu")
 
 
 def verify_signature(raw_body: bytes, signature: str | None, headers: dict | None = None) -> bool:
-    """Verifica el header `x-zavu-signature`. Robusto a varios esquemas.
+    """Verifica la firma del webhook de Zavu (mismo esquema que FacturaHub, probado).
 
-    Sin ZAVU_WEBHOOK_SECRET → no verifica (dev → True). Con secret, acepta si
-    el HMAC-SHA256 coincide bajo cualquiera de estas combinaciones:
-      - clave: secret tal cual · (si `whsec_…`) base64-decode del resto · resto en texto
-      - mensaje: body crudo · estilo Svix `{id}.{ts}.{body}` · `{ts}.{body}`
-      - encoding: hex · base64
-    Cubre tanto HMAC plano como el esquema Svix (prefijo `whsec_`).
+    Sin ZAVU_WEBHOOK_SECRET → no verifica (dev → True). Zavu firma estilo Stripe:
+    header `x-zavu-signature: t=<timestamp>,v1=<hex>`, donde
+    `v1 = HMAC_SHA256(secret, "<t>.<body>")` en hex (secret tal cual). Probamos las
+    variantes de payload conocidas (`t.body`, `body`, `t:body`) y, por robustez,
+    también el secret base64-decodificado si viene como `whsec_…`.
     """
     secret = os.getenv("ZAVU_WEBHOOK_SECRET")
     if not secret:
         return True
     headers = {k.lower(): v for k, v in (headers or {}).items()}
-    # La firma puede venir en varios headers según el esquema (Svix usa
-    # `webhook-signature`; Zavu a veces `x-zavu-signature`). Tomamos el primero.
     if not signature:
         signature = (
-            headers.get("webhook-signature")
-            or headers.get("svix-signature")
-            or headers.get("x-zavu-signature")
-            or headers.get("zavu-signature")
+            headers.get("x-zavu-signature")
+            or headers.get("x-webhook-signature")
+            or headers.get("webhook-signature")
+            or headers.get("x-signature")
         )
     if not signature:
         log.warning("verify_signature: no signature header (have: %s)", list(headers.keys()))
         return False
 
-    # tokens de firma (Svix: "v1,<b64> v1,<b64>"; o "sha256=<hex>"; o plano).
-    # No partir por "=" a lo bruto: el padding base64 lleva "=".
-    tokens = {signature.strip()}
-    for item in signature.strip().split():
-        it = item.strip()
-        if "," in it:  # estilo Svix "v1,<sig>"
-            tokens.add(it.split(",", 1)[1])
-        elif it.startswith(("sha256=", "sha1=")):
-            tokens.add(it.split("=", 1)[1])
-        else:
-            tokens.add(it)
+    # Parse "t=<ts>,v1=<hex>" → {t, v1}. (split por coma, luego por el primer '=').
+    parts: dict[str, str] = {}
+    for p in signature.split(","):
+        eq = p.find("=")
+        if eq > 0:
+            parts[p[:eq].strip()] = p[eq + 1:].strip()
+    t = parts.get("t", "")
+    v1 = parts.get("v1") or parts.get("v0") or (signature.strip() if "=" not in signature else "")
+    if not v1:
+        log.warning("verify_signature: no v1 in signature %r", signature[:40])
+        return False
+
+    body = raw_body.decode("utf-8", "replace") if isinstance(raw_body, (bytes, bytearray)) else str(raw_body)
+    payloads = [f"{t}.{body}", body, f"{t}:{body}"]
 
     keys = [secret.encode()]
     if secret.startswith("whsec_"):
-        rest = secret[len("whsec_"):]
-        keys.append(rest.encode())
         try:
-            keys.append(base64.b64decode(rest))
+            keys.append(base64.b64decode(secret[len("whsec_"):]))
         except Exception:
             pass
 
-    wid = (headers.get("webhook-id") or headers.get("svix-id")
-           or headers.get("x-zavu-id") or headers.get("zavu-id"))
-    wts = (headers.get("webhook-timestamp") or headers.get("svix-timestamp")
-           or headers.get("x-zavu-timestamp") or headers.get("zavu-timestamp"))
-    msgs = [raw_body]
-    if wid and wts:
-        msgs.append(f"{wid}.{wts}.".encode() + raw_body)
-    if wts:
-        msgs.append(f"{wts}.".encode() + raw_body)
-
     for k in keys:
-        for m in msgs:
-            mac = hmac.new(k, m, hashlib.sha256).digest()
-            for cand in (mac.hex(), base64.b64encode(mac).decode()):
-                for t in tokens:
-                    if hmac.compare_digest(cand, t.strip()):
-                        return True
+        for payload in payloads:
+            expected = hmac.new(k, payload.encode(), hashlib.sha256).hexdigest()
+            if len(expected) == len(v1) and hmac.compare_digest(expected, v1):
+                return True
+    log.warning("verify_signature: MISMATCH t=%s v1=%s… body_len=%d", t, v1[:12], len(body))
     return False
 # Sender ID por defecto (overridable por env ZAVU_SENDER).
 DEFAULT_SENDER = "kd7fv57av8kwqgncjzckcrnnn9885nv4"
