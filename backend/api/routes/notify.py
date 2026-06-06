@@ -18,7 +18,7 @@ from .reports import SCEN_LABEL, _eur, _scenario_stats
 
 router = APIRouter(tags=["notify"])
 
-# Número del bot (perfil Decilo App) y template aprobado para envío proactivo.
+# Número del bot y template aprobado para envío proactivo.
 WHATSAPP_NUMBER = os.getenv("ZAVU_WHATSAPP_NUMBER", "+15559919064")
 TEMPLATE_ID = os.getenv("ZAVU_TEMPLATE_ID", "")
 

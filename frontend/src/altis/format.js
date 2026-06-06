@@ -19,6 +19,11 @@ export const eurK = (n) => {
 
 export const signed = (n) => (n >= 0 ? '+' : '−') + eur(Math.abs(n))
 
+// ---- errors ---------------------------------------------------------------
+// Aplana un error (string u objeto {message, hint}) a una línea legible.
+export const errText = (e) =>
+  !e ? '' : typeof e === 'string' ? e : [e.message, e.hint].filter(Boolean).join(' — ')
+
 // ---- colours (mirror of theme tokens) -------------------------------------
 export const COLORS = {
   ink: '#1C2530',

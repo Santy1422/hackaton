@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import { useScenarioWeeks } from '../altis/hooks'
 import { useCovenant } from '../hooks/useForecast'
-import { COLORS, eur, eurK, signed, sumKey } from '../altis/format'
+import { COLORS, eur, eurK, errText, signed, sumKey } from '../altis/format'
 import { Panel, StatBox, DriverChips, Skeleton, Empty, ChartTip } from '../components/primitives'
 import SkyBand from '../components/SkyBand'
 import AuditModal from '../components/AuditModal'
@@ -27,7 +27,7 @@ export default function CFOView({ scenario }) {
   const cs = cov.data?.summary
   const threshold = cov.data?.covenant_threshold
 
-  if (error) return <Empty tone="error" title="Could not load forecast" hint={error} />
+  if (error) return <Empty tone="error" title="Could not load forecast" hint={errText(error)} />
   if (!loading && !weeks.length) return <Empty title="No forecast computed" hint="Run the scenario engine." />
 
   const last = weeks[weeks.length - 1] || {}

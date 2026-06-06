@@ -74,7 +74,7 @@ def verify_signature(raw_body: bytes, signature: str | None, headers: dict | Non
                     if hmac.compare_digest(cand, t.strip()):
                         return True
     return False
-# Sender ID por defecto (perfil "Decilo App"); overridable por env.
+# Sender ID por defecto (overridable por env ZAVU_SENDER).
 DEFAULT_SENDER = "kd7fv57av8kwqgncjzckcrnnn9885nv4"
 
 

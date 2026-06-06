@@ -9,7 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useApi, useForecastOpco } from '../hooks/useForecast'
-import { COLORS, SCENARIOS, eur, eurK, signed, sumKey } from '../altis/format'
+import { COLORS, SCENARIOS, eur, eurK, errText, signed, sumKey } from '../altis/format'
 import { Panel, Kpi, Skeleton, Empty, ChartTip } from '../components/primitives'
 import OpcoTabs from '../components/OpcoTabs'
 
@@ -44,6 +44,8 @@ export default function OpcoMD({ scenario, lockedOpco }) {
       <Panel title={'Net cash · 13 weeks · ' + oId} hint={SCENARIOS[scenario]?.label + ' scenario'}>
         {fc.loading ? (
           <Skeleton height={250} />
+        ) : fc.error ? (
+          <Empty tone="error" title="Could not load forecast" hint={errText(fc.error)} />
         ) : (
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={weeks} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -66,6 +68,8 @@ export default function OpcoMD({ scenario, lockedOpco }) {
       <Panel title="WIP exposure · top projects">
         {wip.loading ? (
           <Skeleton height={220} />
+        ) : wip.error ? (
+          <Empty tone="error" title="Could not load WIP exposure" hint={errText(wip.error)} />
         ) : (wip.data?.top_projects || []).length === 0 ? (
           <Empty title="No billing in the last 90 days" />
         ) : (

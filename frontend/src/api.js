@@ -36,22 +36,32 @@ function apiError(res, body) {
   return e
 }
 
-export async function apiGet(path) {
-  const res = await fetch(`${API}/api${path}`, { headers: { ...authHeaders() } })
+// fetch que convierte un fallo de red (backend caído, CORS, offline) en un
+// Error legible en vez del críptico "Failed to fetch".
+async function request(path, init) {
+  let res
+  try {
+    res = await fetch(`${API}/api${path}`, init)
+  } catch {
+    const e = new Error('Cannot reach the server. Check your connection and try again.')
+    e.code = 'NETWORK'
+    throw e
+  }
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw apiError(res, body)
   return body
 }
 
+export async function apiGet(path) {
+  return request(path, { headers: { ...authHeaders() } })
+}
+
 export async function apiPost(path, payload) {
-  const res = await fetch(`${API}/api${path}`, {
+  return request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(payload),
   })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw apiError(res, body)
-  return body
 }
 
 export const eur = (n) =>

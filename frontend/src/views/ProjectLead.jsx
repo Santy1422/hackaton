@@ -14,6 +14,7 @@ import {
   COLORS,
   WEATHER_GLYPH,
   normalizeWeather,
+  errText,
   eur,
 } from '../altis/format'
 import { Panel, Skeleton, Empty, ChartTip } from '../components/primitives'
@@ -52,6 +53,8 @@ export default function ProjectLead({ scenario, lockedOpco }) {
           <div className="lh-eyebrow">NEXT INVOICEABLE MILESTONE</div>
           {ms.loading ? (
             <Skeleton height={120} />
+          ) : ms.error ? (
+            <Empty tone="error" title="Could not load milestones" hint={errText(ms.error)} />
           ) : next ? (
             <>
               <div className="lh-val">{eur(next.contract_value)}</div>
@@ -87,6 +90,8 @@ export default function ProjectLead({ scenario, lockedOpco }) {
       <Panel title="Materials outflow vs milestone billing" hint="materials are ordered ~2 weeks ahead of execution">
         {fc.loading ? (
           <Skeleton height={250} />
+        ) : fc.error ? (
+          <Empty tone="error" title="Could not load forecast" hint={errText(fc.error)} />
         ) : (
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={bars} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -105,6 +110,8 @@ export default function ProjectLead({ scenario, lockedOpco }) {
       <Panel title="Upcoming milestones">
         {ms.loading ? (
           <Skeleton height={200} />
+        ) : ms.error ? (
+          <Empty tone="error" title="Could not load milestones" hint={errText(ms.error)} />
         ) : list.length === 0 ? (
           <Empty title="No milestones in the next 180 days" />
         ) : (

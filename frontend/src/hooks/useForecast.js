@@ -14,7 +14,8 @@ export function useApi(path, deps = []) {
     setError(null)
     apiGet(path)
       .then((d) => on && setData(d))
-      .catch((e) => on && setError(e.message))
+      // Conserva el error completo: { message, hint, code } para mostrar la pista.
+      .catch((e) => on && setError({ message: e.message, hint: e.hint, code: e.code }))
       .finally(() => on && setLoading(false))
     return () => {
       on = false

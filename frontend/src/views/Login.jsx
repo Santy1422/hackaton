@@ -38,7 +38,8 @@ export default function Login() {
     try {
       await login(email.trim(), pwd)
     } catch (e2) {
-      setErr(e2.message || 'Invalid credentials — pick a demo profile on the right.')
+      const base = e2.message || 'Invalid credentials — pick a demo profile on the right.'
+      setErr(e2.hint ? `${base} — ${e2.hint}` : base)
     } finally {
       setBusy(false)
     }

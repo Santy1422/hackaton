@@ -2,19 +2,22 @@ import { useState } from 'react'
 import { apiPost } from '../api'
 import { SCENARIOS } from '../altis/format'
 import { generateReport } from '../altis/reports'
+import { useToast } from './Toast'
 
 /** "Reports" button → weekly / monthly PDF download (real data). */
 export default function ReportMenu({ scenario = 'base' }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   const run = async (kind) => {
     setOpen(false)
     setBusy(true)
     try {
       await generateReport(kind, scenario)
+      toast.success(`${kind === 'weekly' ? 'Weekly' : 'Monthly'} report downloaded`)
     } catch (e) {
-      alert('Could not generate report: ' + (e?.message || e))
+      toast.error('Could not generate report', e?.hint || e?.message || String(e))
     } finally {
       setBusy(false)
     }
@@ -30,14 +33,13 @@ export default function ReportMenu({ scenario = 'base' }) {
     setBusy(true)
     try {
       const r = await apiPost(`/notify/covenant/${scenario}`, { to: to.trim() })
-      const ok = r?.result?.sent
-      alert(
-        ok
-          ? `Sent ✓ (id ${r.result.id || '—'})`
-          : `Not sent: ${r?.result?.reason || 'unknown'}\n\nPreview:\n${r?.message || ''}`
-      )
+      if (r?.result?.sent) {
+        toast.success('Covenant alert sent', `WhatsApp delivered to ${to.trim()}`)
+      } else {
+        toast.error('Alert not sent', r?.result?.reason || 'WhatsApp not configured (dry-run).')
+      }
     } catch (e) {
-      alert('Could not send: ' + (e?.message || e))
+      toast.error('Could not send alert', e?.hint || e?.message || String(e))
     } finally {
       setBusy(false)
     }

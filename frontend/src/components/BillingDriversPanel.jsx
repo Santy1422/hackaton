@@ -1,6 +1,6 @@
 import { useApi } from '../hooks/useForecast'
 import { eur } from '../altis/format'
-import { Panel, Skeleton, Empty } from './primitives'
+import { Panel, Skeleton } from './primitives'
 
 /**
  * Conecta /api/insights/billing-drivers: el hallazgo empírico de que el clima NO

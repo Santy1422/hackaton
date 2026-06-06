@@ -16,10 +16,19 @@ export default function Onboarding({ user, onDone }) {
   const [step, setStep] = useState(-1)
   const [count, setCount] = useState(0)
   const [sources, setSources] = useState(null)
+  const [srcErr, setSrcErr] = useState(null)
+  const [reload, setReload] = useState(0)
 
   useEffect(() => {
-    apiGet('/sources').then(setSources).catch(() => {})
-  }, [])
+    let on = true
+    setSrcErr(null)
+    apiGet('/sources')
+      .then((d) => on && setSources(d))
+      .catch((e) => on && setSrcErr(e.hint || e.message || 'Could not reach accounting systems.'))
+    return () => {
+      on = false
+    }
+  }, [reload])
 
   const systems = useMemo(() => sources?.systems || [], [sources])
   const total = sources?.total_transactions || 0
