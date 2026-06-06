@@ -9,6 +9,10 @@ Usage:
 """
 
 import sys
+from pathlib import Path
+
+# data/raw vive en la raíz del repo (backend/ es hija)
+RAW_DIR = str(Path(__file__).resolve().parent.parent / "data" / "raw")
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
@@ -22,7 +26,7 @@ if __name__ == "__main__":
     if cmd in ("ingest", "all"):
         from ingestion.reconcile import reconcile_all
 
-        rows = reconcile_all("data/raw/")
+        rows = reconcile_all(RAW_DIR)
         print(f"✅ Ingestion complete ({rows} rows)")
 
     if cmd in ("model", "all"):
