@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiPost } from '../api'
 import { SCENARIOS } from '../altis/format'
 import { generateReport } from '../altis/reports'
 
@@ -14,6 +15,27 @@ export default function ReportMenu({ scenario = 'base' }) {
       await generateReport(kind, scenario)
     } catch (e) {
       alert('Could not generate report: ' + (e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Manda la alerta de covenant (armada en el backend desde la DB) por WhatsApp/Zavu.
+  const sendWhatsApp = async () => {
+    setOpen(false)
+    const to = window.prompt('WhatsApp number (E.164, e.g. +5491155551234):')
+    if (!to) return
+    setBusy(true)
+    try {
+      const r = await apiPost(`/notify/covenant/${scenario}`, { to: to.trim() })
+      const ok = r?.result?.sent
+      alert(
+        ok
+          ? `Sent ✓ (id ${r.result.id || '—'})`
+          : `Not sent: ${r?.result?.reason || 'unknown'}\n\nPreview:\n${r?.message || ''}`
+      )
+    } catch (e) {
+      alert('Could not send: ' + (e?.message || e))
     } finally {
       setBusy(false)
     }
@@ -37,6 +59,10 @@ export default function ReportMenu({ scenario = 'base' }) {
             <button onClick={() => run('monthly')} role="menuitem">
               <b>Monthly report</b>
               <span>Month roll-up, scenario comparison &amp; trends</span>
+            </button>
+            <button onClick={sendWhatsApp} role="menuitem">
+              <b>📲 Send covenant alert</b>
+              <span>WhatsApp via Zavu · status &amp; headroom for this scenario</span>
             </button>
           </div>
         </>
