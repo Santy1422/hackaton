@@ -7,6 +7,14 @@ from fastapi import HTTPException
 SCENARIOS = ("base", "wet_qtr", "dry_qtr")
 OPCOS = ("Opco_A", "Opco_B", "Opco_C", "Opco_D")
 
+# Metadata de cada opco = una empresa real del portfolio, una por sistema contable.
+OPCO_META = {
+    "Opco_A": {"name": "GB Dakwerken", "system": "Snelstart"},
+    "Opco_B": {"name": "Dakdekkersbedrijf Peter Ummels", "system": "Exact"},
+    "Opco_C": {"name": "Gilde Dakbedekkingen", "system": "Gilde"},
+    "Opco_D": {"name": "Company E", "system": "Yuki"},
+}
+
 
 def err(code: str, message: str, hint: str | None = None) -> dict:
     d = {"error": True, "code": code, "message": message}

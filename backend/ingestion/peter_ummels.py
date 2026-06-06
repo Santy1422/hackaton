@@ -1,4 +1,4 @@
-"""Parser para archivos 82604-* (sistema PeterUmmels_Exact, Opco_D).
+"""Parser para archivos 82604-* (sistema PeterUmmels_Exact, Opco_B).
 
 Formato:
 - Sheet: 'Sheet1'
@@ -34,7 +34,7 @@ def parse_file(path: str) -> pd.DataFrame:
             "debet": df["Debet"].fillna(0),
             "credit": df["Credit"].fillna(0),
             "system": "PeterUmmels_Exact",
-            "opco": "Opco_D",
+            "opco": "Opco_B",
             "source_file": os.path.basename(path),
         }
     )

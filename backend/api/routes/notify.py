@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import os
+from urllib.parse import quote
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from db.database import execute, get_connection, query
@@ -14,6 +17,10 @@ from ..validation import err, validate_scenario
 from .reports import SCEN_LABEL, _eur, _scenario_stats
 
 router = APIRouter(tags=["notify"])
+
+# Número del bot (perfil Decilo App) y template aprobado para envío proactivo.
+WHATSAPP_NUMBER = os.getenv("ZAVU_WHATSAPP_NUMBER", "+15559919064")
+TEMPLATE_ID = os.getenv("ZAVU_TEMPLATE_ID", "")
 
 # Catálogo de crons de WhatsApp (single source of truth, server-side).
 # `default_enabled` es el estado inicial; cada usuario persiste el suyo en DB.
@@ -150,12 +157,46 @@ def ask(body: AskBody, user: dict = Depends(get_current_user)):
     return out
 
 
-@router.post("/whatsapp/webhook")
-async def whatsapp_webhook(request: Request):
-    """Webhook de Zavu: mensaje entrante → Claude responde → reply por WhatsApp.
+def _public_base() -> str:
+    b = os.getenv("PUBLIC_BASE_URL")
+    if b:
+        return b.rstrip("/")
+    d = os.getenv("RAILWAY_PUBLIC_DOMAIN")
+    return f"https://{d}" if d else "http://localhost:8000"
 
-    Verifica `x-zavu-signature` (si hay ZAVU_WEBHOOK_SECRET). Solo procesa
-    `message.inbound` de WhatsApp tipo texto; el resto se ignora con 200.
+
+def _reply_with_analysis(frm: str, text: str) -> None:
+    """Tarea en background: respuesta de Claude + PDF del informe por WhatsApp.
+
+    Corre fuera del request del webhook (puede demorar: Claude + PDF + envíos).
+    El inbound abre la ventana de 24h → free-form + documento se entregan sin template.
+    """
+    from integrations.zavu import send_document
+
+    # 1) Respuesta analítica de Claude (texto)
+    try:
+        send_whatsapp(frm, answer_question(text))
+    except Exception:
+        pass
+    # 2) PDF del informe (generado server-side, servido por /api/reports/pdf)
+    try:
+        from models.pdf_report import build_pdf
+
+        from .reports import publish_pdf
+
+        token = publish_pdf(build_pdf("base"))
+        url = f"{_public_base()}/api/reports/pdf/{token}"
+        send_document(frm, url, caption="Altis Forecast — 13-week cash report (PDF)")
+    except Exception:
+        pass
+
+
+@router.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Webhook de Zavu: mensaje entrante → (background) Claude + PDF por WhatsApp.
+
+    Verifica `x-zavu-signature` (si hay ZAVU_WEBHOOK_SECRET). Responde 200 al
+    instante y procesa el análisis + PDF en background (aunque demore).
     Payload Zavu: { type, senderId, data: { from, text, channel, messageId } }.
     """
     raw = await request.body()
@@ -178,6 +219,47 @@ async def whatsapp_webhook(request: Request):
     if data.get("messageType", "text") != "text" or not text or not frm:
         return {"ok": True, "ignored": "non-text or missing from/text"}
 
-    answer = answer_question(text)
-    result = send_whatsapp(frm, answer)
-    return {"ok": True, "from": frm, "answer": answer, "result": result}
+    background_tasks.add_task(_reply_with_analysis, frm, text)
+    return {"ok": True, "queued": True, "from": frm}
+
+
+# ── Opción B: link wa.me (el usuario escribe primero → webhook → Claude) ──
+@router.get("/whatsapp-link")
+def whatsapp_link(user: dict = Depends(get_current_user)):
+    """Link wa.me al bot con texto prellenado. Funciona SIN template (reactivo)."""
+    digits = "".join(ch for ch in WHATSAPP_NUMBER if ch.isdigit())
+    text = "Hola Altis 👋 mostrame el covenant headroom de esta semana"
+    return {"number": WHATSAPP_NUMBER, "url": f"https://wa.me/{digits}?text={quote(text)}"}
+
+
+# ── Opción A: envío PROACTIVO por template aprobado (no requiere que escriban) ──
+class ForecastReadyBody(BaseModel):
+    to: str
+    scenario: str = "base"
+
+
+@router.post("/forecast-ready")
+def forecast_ready(
+    body: ForecastReadyBody, user: dict = Depends(require_roles("pe_board", "cfo"))
+):
+    """Manda el template 'forecast listo' (proactivo). Requiere template aprobado."""
+    validate_scenario(body.scenario)
+    if not TEMPLATE_ID:
+        return {"sent": False, "reason": "ZAVU_TEMPLATE_ID no configurado (template aún no aprobado)"}
+    con = get_connection()
+    rules = query(
+        con,
+        "SELECT value FROM covenant_rules WHERE threshold_type='min_cumulative_cashflow' "
+        "ORDER BY id LIMIT 1",
+    )
+    threshold = float(rules[0]["value"]) if rules else -500000.0
+    st = _scenario_stats(con, body.scenario, threshold)
+    con.close()
+    if not st:
+        return {"sent": False, "reason": "forecast not computed"}
+    variables = {
+        "1": SCEN_LABEL.get(body.scenario, body.scenario),
+        "2": st["status"],
+        "3": st["headroom_fmt"],
+    }
+    return send_whatsapp(body.to, template_id=TEMPLATE_ID, variables=variables)

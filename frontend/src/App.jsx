@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from './auth/AuthContext'
 import TopBar from './components/TopBar'
+import Assistant from './components/Assistant'
 import Login from './views/Login'
 import Onboarding from './views/Onboarding'
 import CFOView from './views/CFOView'
@@ -77,6 +78,7 @@ function Dashboard({ user, onLogout }) {
         Altis Groep · ingestion → reconciliation → driver model → scenario engine → role-based
         presentation · single source of truth: <code>forecast_13w</code>
       </footer>
+      <Assistant />
     </div>
   )
 }

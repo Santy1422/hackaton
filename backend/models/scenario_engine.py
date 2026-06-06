@@ -22,8 +22,8 @@ from .m5_weather import compute_delay_weeks, fetch_weather_forecast
 
 SCENARIOS = {
     "base": {"revenue_mult": 1.00, "dso_mult": 1.00, "weather_active": True},
-    "wet_qtr": {"revenue_mult": 0.82, "dso_mult": 1.20, "weather_active": True, "extra_rain_mm": 18},
-    "dry_qtr": {"revenue_mult": 1.12, "dso_mult": 0.86, "weather_active": False},
+    "wet_qtr": {"revenue_mult": 0.80, "dso_mult": 1.25, "weather_active": True, "extra_rain_mm": 18},
+    "dry_qtr": {"revenue_mult": 1.15, "dso_mult": 0.80, "weather_active": False},
 }
 
 OPCOS = ["Opco_A", "Opco_B", "Opco_C", "Opco_D"]
@@ -90,12 +90,22 @@ def run_all_scenarios(db_conn) -> int:
         """nan/inf -> 0.0 para no romper el cast en Postgres."""
         return 0.0 if (x is None or np.isnan(x) or np.isinf(x)) else float(x)
 
-    # base weekly billing por opco (media 2025)
-    rec = weekly[weekly["year"] == 2025]
+    # base weekly billing por opco = media del año MÁS RECIENTE con revenue.
+    # (robusto a opcos nuevas o con datos sólo en 2026, p.ej. Company E)
     base_weekly = {}
+    base_year = {}
     for opco in OPCOS:
-        m = rec[(rec["opco"] == opco) & (rec["rev"] > 0)]["rev"].mean()
-        base_weekly[opco] = 0.0 if pd.isna(m) else float(m)
+        op = weekly[(weekly["opco"] == opco) & (weekly["rev"] > 0)]
+        m = 0.0
+        yr = None
+        for y in sorted(op["year"].dropna().unique(), reverse=True):
+            vals = op[op["year"] == y]["rev"]
+            if len(vals) >= 4:  # al menos un mes de datos semanales
+                m = float(vals.mean())
+                yr = int(y)
+                break
+        base_weekly[opco] = m
+        base_year[opco] = yr
 
     # clima NL real (Open-Meteo forecast + climatología), matcheado por iso_week
     wdf = fetch_weather_forecast(start=start, weeks=HORIZON)
@@ -157,29 +167,37 @@ def run_all_scenarios(db_conn) -> int:
         for opco in OPCOS:
             base = base_weekly.get(opco, 0.0)
 
-            def billing_at(k: int) -> float:
+            def billing_at(k: int, mult: float = rev_mult) -> float:
                 ws = start + timedelta(weeks=k - 1)
                 iso = int(ws.isocalendar()[1])
-                return base * seasonal.get(iso, 1.0) * rev_mult
+                return base * seasonal.get(iso, 1.0) * mult
 
+            # d1 milestone billing → escala con el escenario (más/menos obra).
             billing = [billing_at(fw) for fw, _, _ in weeks]
+            # plan de obra COMPROMETIDO (materiales/subcon ya pedidos): NO escala con
+            # el escenario. El clima cambia *cuándo* facturás y cobrás, no lo que ya
+            # te comprometiste a pagar. Esto da el orden intuitivo dry > base > wet.
+            committed = [billing_at(fw, 1.0) for fw, _, _ in weeks]
 
-            # M2 materiales: a + b*billing[w+2]  (outflow negativo)
+            # M2 materiales: a + b*committed[w+2]  (outflow negativo)
             materials = []
             for i in range(HORIZON):
-                lead = billing[i + 2] if i + 2 < HORIZON else billing[-1]
+                lead = committed[i + 2] if i + 2 < HORIZON else committed[-1]
                 materials.append(-max(0.0, alpha + beta * lead))
 
-            # M3 subcon: ratio del milestone distribuido por payment terms
+            # M3 subcon: ratio del plan comprometido distribuido por payment terms
             subcon = [0.0] * HORIZON
             for i in range(HORIZON):
-                amt = SUBCON_RATIO * billing[i]
+                amt = SUBCON_RATIO * committed[i]
                 for term, frac in terms.items():
                     tgt = i + TERM_WEEKS[term]
                     if tgt < HORIZON:
                         subcon[tgt] -= amt * frac
 
-            # M4 cobros: billing desplazado por DSO/7 (inflow)
+            # M4 cobros: billing desplazado por DSO/7 (inflow). Escala con el
+            # escenario (la condición del trimestre afecta también la cartera que
+            # se cobra). Con materiales/subcon ya escenario-neutral, el cobro es lo
+            # que mueve el net → orden intuitivo dry > base > wet.
             dso = DSO_DAYS[scenario][opco]
             lag = max(1, round(dso / 7 * params["dso_mult"]))
             collection = [billing_at(fw - lag) for fw, _, _ in weeks]

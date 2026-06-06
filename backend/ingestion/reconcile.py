@@ -8,6 +8,7 @@ import pandas as pd
 
 from db.database import copy_rows, execute, get_connection, init_schema
 
+from .altis_ds2 import ingest_ds2_files
 from .gb_snelstart import ingest_gb_files
 from .peter_ummels import ingest_pu_files
 
@@ -65,7 +66,11 @@ def reconcile_all(raw_dir: str = "data/raw/") -> int:
     """
     con = get_connection()
     init_schema(con)
-    frames = [ingest_gb_files(raw_dir), ingest_pu_files(raw_dir)]
+    frames = [
+        ingest_gb_files(raw_dir),    # Opco_A — GB / Snelstart
+        ingest_pu_files(raw_dir),    # Opco_B — Peter Ummels / Exact
+        ingest_ds2_files(raw_dir),   # Opco_C — Gilde · Opco_D — Yuki (Company E)
+    ]
     df = pd.concat([f for f in frames if not f.empty], ignore_index=True)
     if df.empty:
         return 0

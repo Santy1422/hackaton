@@ -1,4 +1,9 @@
-"""Parser para archivos GB_8000/8001/8002 (sistema GB_Snelstart).
+"""Parser para los exports de GB (sistema Snelstart) → Opco_A.
+
+GB es UNA empresa (portfolio company 1). Los archivos GB_8000/8001/8002 son sus
+cuentas de revenue con distinto IVA (omzet hoog 21% / verlegd / laag 9%), NO
+opcos distintos. Todas las filas pertenecen al mismo opco; la cuenta real se
+conserva en `gl_account` (8000/8001/8002) para el mapeo de drivers e IVA.
 
 Formato:
 - Sheet: 'Blad1', header en fila 0
@@ -13,13 +18,12 @@ import os
 
 import pandas as pd
 
-OPCO_MAP = {"8000": "Opco_A", "8001": "Opco_B", "8002": "Opco_C"}
+OPCO = "Opco_A"  # GB / Snelstart
 
 
 def parse_file(path: str) -> pd.DataFrame:
-    """Lee un archivo GB_* y lo normaliza al esquema canónico."""
+    """Lee un archivo GB_* y lo normaliza al esquema canónico (todo Opco_A)."""
     df = pd.read_excel(path, sheet_name="Blad1")
-    code = os.path.basename(path).split("_")[1][:4]  # 8000 / 8001 / 8002
     out = pd.DataFrame(
         {
             "gl_account": df["Rekening"].astype(str),
@@ -33,7 +37,7 @@ def parse_file(path: str) -> pd.DataFrame:
             "project_code": df["Trek"],
             "btw_type": df["BTW-srt"],
             "system": "GB_Snelstart",
-            "opco": OPCO_MAP.get(code, "Opco_A"),
+            "opco": OPCO,
             "source_file": os.path.basename(path),
         }
     )

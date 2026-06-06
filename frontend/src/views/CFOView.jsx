@@ -16,6 +16,7 @@ import { COLORS, eur, eurK, signed, sumKey } from '../altis/format'
 import { Panel, StatBox, DriverChips, Skeleton, Empty, ChartTip } from '../components/primitives'
 import SkyBand from '../components/SkyBand'
 import AuditModal from '../components/AuditModal'
+import BillingDriversPanel from '../components/BillingDriversPanel'
 
 const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
@@ -107,6 +108,8 @@ export default function CFOView({ scenario }) {
       <Panel title="What moves the number" hint="five independently tunable streams">
         {loading ? <Skeleton height={120} /> : <DriverChips weeks={weeks} />}
       </Panel>
+
+      <BillingDriversPanel />
 
       {week && (
         <AuditModal

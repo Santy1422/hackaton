@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from db.database import get_connection, query
 
 from ..auth import enforce_opco_scope, get_current_user, require_roles
-from ..validation import err, validate_opco
+from ..validation import OPCO_META, err, validate_opco
 
 router = APIRouter(tags=["data"])
 
@@ -299,7 +299,8 @@ def get_opcos(user: dict = Depends(require_roles("pe_board", "cfo"))):
         "opcos": [
             {
                 "id": r["opco"],
-                "name": r["opco"],
+                "name": OPCO_META.get(r["opco"], {}).get("name", r["opco"]),
+                "system": OPCO_META.get(r["opco"], {}).get("system"),
                 "transactions": int(r["transactions"] or 0),
                 "revenue": round(float(r["revenue"] or 0), 2),
                 "share": round(float(r["revenue"] or 0) / total_rev, 4),

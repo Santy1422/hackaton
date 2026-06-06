@@ -6,7 +6,11 @@ los pasa a Claude; el modelo solo escribe la prosa (nunca inventa cifras).
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import secrets
+import time
+
+from fastapi import APIRouter, Depends, Response
+
 from pydantic import BaseModel
 
 from db.database import get_connection, query
@@ -16,6 +20,34 @@ from ..auth import require_roles
 from ..validation import SCENARIOS, validate_scenario
 
 router = APIRouter(tags=["reports"])
+
+# Store efímero de PDFs generados (1 réplica) → URL pública para que Zavu los baje.
+_PDF_STORE: dict[str, tuple[bytes, float]] = {}
+_PDF_TTL = 3600  # 1 hora
+
+
+def publish_pdf(data: bytes) -> str:
+    """Guarda un PDF y devuelve un token para servirlo en /api/reports/pdf/{token}."""
+    now = time.time()
+    for k, (_, exp) in list(_PDF_STORE.items()):
+        if exp < now:
+            _PDF_STORE.pop(k, None)
+    token = secrets.token_urlsafe(16)
+    _PDF_STORE[token] = (data, now + _PDF_TTL)
+    return token
+
+
+@router.get("/pdf/{token}")
+def get_pdf(token: str):
+    """Sirve un PDF generado (público, efímero) — lo descarga Zavu para WhatsApp."""
+    item = _PDF_STORE.get(token)
+    if not item or item[1] < time.time():
+        return Response(status_code=404)
+    return Response(
+        content=item[0],
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="altis-forecast-{token[:8]}.pdf"'},
+    )
 
 SCEN_LABEL = {"base": "Base", "wet_qtr": "Wet quarter", "dry_qtr": "Dry quarter"}
 

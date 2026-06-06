@@ -67,4 +67,4 @@ export const SCENARIOS = [
   { id: 'dry_qtr', label: 'Dry Quarter' },
 ]
 
-export const OPCOS = ['Opco_A', 'Opco_B', 'Opco_C', 'Opco_D']
+// La lista real de OpCos es data-driven (useOpcos → /api/opcos). No hardcodear.
