@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 import pandas as pd
 
 from db.database import get_connection
@@ -18,9 +20,26 @@ GL_DRIVER_MAP = {
 }
 
 
+def _coerce_period(v):
+    """Periode puede venir como entero (1-12) o como fecha (GB). Normaliza a mes."""
+    if pd.isna(v):
+        return None
+    if isinstance(v, (pd.Timestamp, datetime, date)):
+        return int(v.month)
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
 def _enrich(df: pd.DataFrame) -> pd.DataFrame:
     """Calcula net_amount, driver/label y campos derivados de fecha."""
     df = df.copy()
+    df["period"] = df["period"].map(_coerce_period).astype("Int64")
+    if "project_code" in df:
+        df["project_code"] = df["project_code"].map(
+            lambda v: None if pd.isna(v) else str(v)
+        )
     df["net_amount"] = df["credit"] - df["debet"]
     df["driver"] = df["gl_account"].map(lambda g: GL_DRIVER_MAP.get(g, {}).get("driver"))
     df["gl_label"] = df["gl_account"].map(lambda g: GL_DRIVER_MAP.get(g, {}).get("label"))
@@ -49,6 +68,10 @@ def reconcile_all(raw_dir: str = "data/raw/") -> int:
     con.execute("DELETE FROM transactions")
     con.register("df_tx", df)
     con.execute("INSERT INTO transactions BY NAME SELECT * FROM df_tx")
+
+    _seed_gl_mapping(con)
+    _seed_covenant_rules(con)
+
     con.execute(
         "INSERT INTO reconciliation_log (id, source_file, rows_inserted, errors) "
         "VALUES (1, 'ALL', ?, NULL)",
@@ -56,3 +79,23 @@ def reconcile_all(raw_dir: str = "data/raw/") -> int:
     )
     con.close()
     return len(df)
+
+
+def _seed_gl_mapping(con) -> None:
+    """Carga gl_mapping desde GL_DRIVER_MAP (reviewable por un controller)."""
+    con.execute("DELETE FROM gl_mapping")
+    for gl, m in GL_DRIVER_MAP.items():
+        con.execute(
+            "INSERT INTO gl_mapping (gl_account, label, driver, btw_type, reviewed_by) "
+            "VALUES (?, ?, ?, ?, 'llm_auto')",
+            [gl, m["label"], m["driver"], m["btw_type"]],
+        )
+
+
+def _seed_covenant_rules(con) -> None:
+    """Umbral de covenant (min cumulative cashflow 13w) según spec."""
+    con.execute("DELETE FROM covenant_rules")
+    con.execute(
+        "INSERT INTO covenant_rules (id, threshold_type, value, horizon_weeks, description) "
+        "VALUES (1, 'min_cumulative_cashflow', -500000, 13, 'Min cumulative cashflow over 13 weeks')"
+    )

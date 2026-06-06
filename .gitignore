@@ -8,6 +8,11 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 
+# Datos financieros reales y DB local (NO subir a git)
+data/raw/*.xlsx
+data/raw/*.csv
+*.duckdb
+
 # OS / editor
 .DS_Store
 .vscode/
