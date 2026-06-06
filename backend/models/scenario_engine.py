@@ -118,11 +118,11 @@ def run_all_scenarios(db_conn) -> int:
         risk = "high" if delay > 0.25 else "medium" if delay > 0 else "low"
         con.execute(
             "INSERT INTO weather_forecast (iso_week, week_start, temp_avg, rain_mm, "
-            "frost_days, wind_bft, risk_level, delay_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT DO NOTHING",
+            "frost_days, wind_bft, risk_level, delay_days, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             [iso, ws, round(float(w.get("temp_avg", 0)), 2), round(float(w.get("rain_mm", 0)), 2),
              int(w.get("frost_days", 0)), round(float(w.get("wind_bft", 0)), 1), risk,
-             int(round(delay * 7))],
+             int(round(delay * 7)), w.get("source", "nl-normals")],
         )
 
     con.execute("DELETE FROM forecast_13w")
