@@ -1,118 +1,115 @@
 import { useState } from 'react'
 import {
   Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
-  Line,
   ComposedChart,
-  Legend,
+  Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { eur } from '../api'
-import { useForecast } from '../hooks/useForecast'
-import { C, fmtK, TOOLTIP_CURSOR } from '../theme'
-import ChartTooltip from '../components/ChartTooltip'
-import { Card, ChartSkeleton, EmptyState } from '../components/ui'
-import { IconFileSearch } from '../components/icons'
-import DrillDown from '../components/DrillDown'
+import { useScenarioWeeks } from '../altis/hooks'
+import { COLORS, COVENANT_THRESHOLD, eur, eurK, signed, sumKey } from '../altis/format'
+import { Panel, StatBox, DriverChips, Skeleton, Empty, ChartTip } from '../components/primitives'
+import SkyBand from '../components/SkyBand'
+import AuditModal from '../components/AuditModal'
+
+const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function CFOView({ scenario }) {
-  const { data, loading, error } = useForecast(scenario)
   const [week, setWeek] = useState(null)
+  const { weeks, status, loading, error } = useScenarioWeeks(scenario)
 
-  if (error) return <EmptyState tone="error" title="No se pudo cargar el forecast" hint={error} />
+  if (error) return <Empty tone="error" title="Could not load forecast" hint={error} />
+  if (!loading && !weeks.length) return <Empty title="No forecast computed" hint="Run the scenario engine." />
 
-  const rows = (data?.weeks || []).map((w) => ({
-    week: `W${w.forecast_week}`,
-    forecast_week: w.forecast_week,
+  const last = weeks[weeks.length - 1] || {}
+  const totalNet = sumKey(weeks, 'net_cashflow')
+  const lowWeek = weeks.reduce((m, w) => (w.cumulative_cf < m.cumulative_cf ? w : m), weeks[0] || {})
+  const weatherWeeks = weeks.filter((w) => w.weather_risk !== 'low').length
+  const chart = weeks.map((w) => ({
+    week: `W${w.week}`,
+    forecast_week: w.week,
     inflow: Number(w.gross_inflow),
     outflow: Number(w.gross_outflow),
-    net: Number(w.net_cashflow),
     cumulative: Number(w.cumulative_cf),
   }))
-  const t = data?.totals
 
   return (
-    <div className="space-y-6">
-      {t && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Mini label="Inflow total 13s" value={eur(t.total_gross_inflow)} tone="text-emerald-600" />
-          <Mini label="Outflow total 13s" value={eur(t.total_gross_outflow)} tone="text-rose-600" />
-          <Mini
-            label="Net cashflow 13s"
-            value={eur(t.total_net_cashflow)}
-            tone={t.total_net_cashflow >= 0 ? 'text-slate-900' : 'text-rose-600'}
-          />
-          <Mini label="Acumulado final" value={eur(t.final_cumulative_cf)} tone="text-indigo-600" />
-        </div>
-      )}
+    <div className="view anim">
+      <SkyBand weeks={weeks} />
 
-      <Card
-        title="Flujo semanal por dirección"
-        subtitle="Inflow vs outflow + acumulado · 13 semanas"
-        icon={IconFileSearch}
-        action={
-          <span className="hidden items-center gap-1 text-xs text-slate-400 sm:flex">
-            <IconFileSearch size={13} /> Click en una barra → audit trail
-          </span>
-        }
-      >
+      <div className="cfo-hero">
+        <div>
+          <div className="hero-label">PROJECTED CASH POSITION · END OF WEEK 13</div>
+          <div className="hero-big">{loading ? '—' : eur(last.cumulative_cf)}</div>
+          <div className="hero-meta">
+            Net <b className={totalNet >= 0 ? 'pos' : 'neg'}>{signed(totalNet)}</b> over 13 weeks ·
+            covenant floor −€500k held with{' '}
+            <b className="copper">{eurK(status.finalHeadroom)}</b> worst-case headroom
+          </div>
+        </div>
+        <StatBox
+          rows={[
+            { label: 'Lowest point', value: eurK(lowWeek.cumulative_cf), sub: 'week ' + (lowWeek.week || '—') },
+            { label: 'Weather-hit weeks', value: weatherWeeks, sub: 'of 13 below par' },
+            {
+              label: 'Covenant status',
+              value: status.status,
+              tone: status.status === 'SAFE' ? 'ok' : status.status === 'WATCH' ? 'warn' : 'danger',
+              sub: 'worst case across horizon',
+            },
+          ]}
+        />
+      </div>
+
+      <Panel title="The 13 weeks ahead" hint="click any column → audit trail">
+        <p className="panel-sub">
+          Customer collections (in) against materials &amp; subcontractor outflows. The line is cash on
+          hand; the dashed rule is the bank covenant floor.
+        </p>
         {loading ? (
-          <ChartSkeleton height={340} />
+          <Skeleton height={330} />
         ) : (
-          <ResponsiveContainer width="100%" height={340}>
-            <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <ResponsiveContainer width="100%" height={330}>
+            <ComposedChart data={chart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={44} />
-              <Tooltip content={<ChartTooltip />} cursor={TOOLTIP_CURSOR} />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              <Bar dataKey="inflow" name="Inflow" fill={C.inflow} radius={[3, 3, 0, 0]}
+              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
+              <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
+              <ReferenceLine y={COVENANT_THRESHOLD} stroke={COLORS.copper} strokeDasharray="5 4"
+                strokeWidth={1.4} ifOverflow="extendDomain" />
+              <Bar dataKey="inflow" name="Collections in" fill={COLORS.green} radius={[3, 3, 0, 0]}
                 onClick={(d) => setWeek(d.forecast_week)} cursor="pointer" />
-              <Bar dataKey="outflow" name="Outflow" fill={C.outflow} radius={[0, 0, 3, 3]}
+              <Bar dataKey="outflow" name="Materials + subcontractors" fill={COLORS.copper} radius={[0, 0, 3, 3]}
                 onClick={(d) => setWeek(d.forecast_week)} cursor="pointer" />
-              <Line dataKey="cumulative" name="Acumulado" stroke={C.primary} strokeWidth={2.5}
+              <Line dataKey="cumulative" name="Cumulative cash" stroke={COLORS.ink} strokeWidth={2.4}
                 dot={false} activeDot={{ r: 4 }} />
             </ComposedChart>
           </ResponsiveContainer>
         )}
-      </Card>
+        <div className="legend">
+          <span><i style={{ background: COLORS.green }} />Collections in</span>
+          <span><i style={{ background: COLORS.copper }} />Materials + subcontractors out</span>
+          <span><i className="ln" style={{ background: COLORS.ink }} />Cumulative cash</span>
+          <span><i className="dl" style={{ borderColor: COLORS.copper }} />Covenant floor</span>
+        </div>
+      </Panel>
 
-      <Card title="Net cashflow por semana" subtitle="Verde = superávit · Rojo = déficit">
-        {loading ? (
-          <ChartSkeleton height={220} />
-        ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={44} />
-              <Tooltip content={<ChartTooltip />} cursor={TOOLTIP_CURSOR} />
-              <Bar dataKey="net" name="Net" radius={[3, 3, 0, 0]}
-                onClick={(d) => setWeek(d.forecast_week)} cursor="pointer">
-                {rows.map((r, i) => (
-                  <Cell key={i} fill={r.net >= 0 ? C.inflow : C.outflow} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </Card>
+      <Panel title="What moves the number" hint="five independently tunable streams">
+        {loading ? <Skeleton height={120} /> : <DriverChips weeks={weeks} />}
+      </Panel>
 
-      {week && <DrillDown scenario={scenario} week={week} onClose={() => setWeek(null)} />}
-    </div>
-  )
-}
-
-function Mini({ label, value, tone }) {
-  return (
-    <div className="rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={`mt-1 text-lg font-bold tabular-nums ${tone}`}>{value}</div>
+      {week && (
+        <AuditModal
+          scenario={scenario}
+          week={week}
+          weekObj={weeks.find((w) => w.week === week)}
+          onClose={() => setWeek(null)}
+        />
+      )}
     </div>
   )
 }

@@ -2,137 +2,137 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
-  Legend,
 } from 'recharts'
-import { eur } from '../api'
-import { useCovenant, useApi } from '../hooks/useForecast'
-import { C, fmtK, fmtM, TOOLTIP_LINE_CURSOR } from '../theme'
-import ChartTooltip from '../components/ChartTooltip'
-import { Card, ChartSkeleton, StatusPill } from '../components/ui'
-import { IconShield, IconTrending, IconAlert } from '../components/icons'
-import CovenantGauge from '../components/CovenantGauge'
+import { useCovenant, useApi, useStats } from '../hooks/useForecast'
+import { COLORS, COVENANT_THRESHOLD, OPCOS, eurK } from '../altis/format'
+import { Panel, StatBox, Skeleton, ChartTip } from '../components/primitives'
+import CovenantCard from '../components/CovenantCard'
 import SavingsPanel from '../components/SavingsPanel'
+
+const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function PEBoard() {
   const base = useCovenant('base')
   const wet = useCovenant('wet_qtr')
   const dry = useCovenant('dry_qtr')
-  const monthly = useApi('/actuals/monthly', [])
+  const { data: stats } = useStats()
 
   const all = base.data?.all_scenarios
-  const threshold = base.data?.covenant_threshold || -500000
-  const anyBreach = all && Object.values(all).some((s) => s?.any_breach)
+  const threshold = base.data?.covenant_threshold || COVENANT_THRESHOLD
+  const worst = all
+    ? Math.min(all.base?.final_headroom ?? 0, all.wet_qtr?.final_headroom ?? 0, all.dry_qtr?.final_headroom ?? 0)
+    : null
 
   const merged = (base.data?.weeks || []).map((w, i) => ({
     week: `W${w.forecast_week}`,
     base: Number(w.cumulative_cf),
     wet_qtr: Number(wet.data?.weeks?.[i]?.cumulative_cf || 0),
     dry_qtr: Number(dry.data?.weeks?.[i]?.cumulative_cf || 0),
-    threshold,
   }))
 
-  const months = (monthly.data?.months || []).map((m) => ({
-    month: m.month,
-    revenue: Number(m.total_revenue),
-  }))
+  const rev = stats?.revenue || {}
+  const delta =
+    rev.total_2024 ? `+${(((rev.total_2025 - rev.total_2024) / rev.total_2024) * 100).toFixed(1)}% vs 2024` : ''
 
   return (
-    <div className="space-y-6">
-      {/* Banner ejecutivo de covenant */}
-      <div
-        className={`flex items-center gap-3 rounded-2xl border p-4 ${
-          anyBreach
-            ? 'border-rose-200 bg-rose-50/60'
-            : 'border-emerald-200 bg-emerald-50/50'
-        }`}
-      >
-        <span
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-            anyBreach ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'
-          }`}
-        >
-          {anyBreach ? <IconAlert size={20} /> : <IconShield size={20} />}
-        </span>
-        <div className="flex-1">
-          <p className="text-sm font-semibold text-slate-800">
-            {anyBreach
-              ? 'Riesgo de breach de covenant en al menos un escenario'
-              : 'Covenant headroom dentro de límites en los 3 escenarios'}
-          </p>
-          <p className="text-xs text-slate-500">
-            Umbral mínimo de cashflow acumulado: {eur(threshold)} · horizonte 13 semanas
-          </p>
+    <div className="view anim">
+      <div className="board-head">
+        <div>
+          <div className="hero-label">CONSOLIDATED COVENANT HEADROOM · WORST CASE</div>
+          <div className="hero-big">{worst == null ? '—' : eurK(worst)}</div>
+          <div className="hero-meta">
+            Across all three scenarios · 4 operating companies ·{' '}
+            {stats?.transactions?.total_rows?.toLocaleString() || '—'} reconciled transactions · single
+            source of truth
+          </div>
         </div>
-        <StatusPill status={anyBreach ? 'breach' : 'safe'}>
-          {anyBreach ? 'Acción requerida' : 'Estable'}
-        </StatusPill>
+        <StatBox
+          rows={[
+            { label: 'Portfolio revenue 2025', value: eurK(rev.total_2025), sub: delta },
+            { label: 'Reconciled transactions', value: stats?.transactions?.total_rows?.toLocaleString() || '—', sub: 'Gilde · Yuki · Exact · Snelstart' },
+            { label: 'GL accounts mapped', value: stats?.transactions?.gl_accounts_mapped ?? '—', sub: 'controller-reviewed' },
+          ]}
+        />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="cov-grid">
         {all
           ? [
-              ['Base', 'base'],
-              ['Wet Quarter', 'wet_qtr'],
-              ['Dry Quarter', 'dry_qtr'],
+              ['Base scenario', 'base'],
+              ['Wet quarter', 'wet_qtr'],
+              ['Dry quarter', 'dry_qtr'],
             ].map(([label, id]) => (
-              <CovenantGauge
-                key={id}
-                name={label}
-                headroom={all[id]?.final_headroom || 0}
-                threshold={threshold}
-                status={all[id]?.status}
-              />
+              <Panel key={id} title={label}>
+                <CovenantCard headroom={all[id]?.final_headroom || 0} status={all[id]?.status} />
+              </Panel>
             ))
-          : Array.from({ length: 3 }).map((_, i) => <ChartSkeleton key={i} height={150} />)}
+          : Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={210} />)}
       </div>
 
-      <Card
-        title="Cashflow acumulado · 3 escenarios"
-        subtitle="Sensibilidad climática del headroom de covenant"
-        icon={IconShield}
-      >
+      <Panel title="Cumulative cash · 13 weeks · three scenarios" hint="covenant floor −€500k">
         {base.loading ? (
-          <ChartSkeleton height={300} />
+          <Skeleton height={300} />
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={merged} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+            <LineChart data={merged} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={44} />
-              <Tooltip content={<ChartTooltip />} cursor={TOOLTIP_LINE_CURSOR} />
-              <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              <Line dataKey="threshold" name="Umbral" stroke={C.outflow} strokeWidth={1.5}
-                strokeDasharray="6 4" dot={false} />
-              <Line dataKey="base" name="Base" stroke={C.primary} strokeWidth={2.5} dot={false} />
-              <Line dataKey="wet_qtr" name="Wet Qtr" stroke={C.weather} strokeWidth={2} dot={false} />
-              <Line dataKey="dry_qtr" name="Dry Qtr" stroke={C.materials} strokeWidth={2} dot={false} />
+              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
+              <Tooltip content={<ChartTip />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
+              <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4" strokeWidth={1.4} />
+              <Line dataKey="base" name="Base" stroke={COLORS.ink} strokeWidth={2.4} dot={false} />
+              <Line dataKey="wet_qtr" name="Wet quarter" stroke={COLORS.rain} strokeWidth={2.2} dot={false} />
+              <Line dataKey="dry_qtr" name="Dry quarter" stroke={COLORS.green} strokeWidth={2.2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         )}
-      </Card>
+        <div className="legend">
+          <span><i className="ln" style={{ background: COLORS.ink }} />Base</span>
+          <span><i className="ln" style={{ background: COLORS.rain }} />Wet quarter</span>
+          <span><i className="ln" style={{ background: COLORS.green }} />Dry quarter</span>
+          <span><i className="dl" style={{ borderColor: COLORS.copper }} />Covenant floor</span>
+        </div>
+      </Panel>
 
-      <Card title="Revenue mensual (actuals)" subtitle="Portfolio consolidado · 4 opcos" icon={IconTrending}>
-        {monthly.loading ? (
-          <ChartSkeleton height={260} />
-        ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={months} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} minTickGap={20} />
-              <YAxis tickFormatter={fmtM} tickLine={false} axisLine={false} width={44} />
-              <Tooltip content={<ChartTooltip />} cursor={TOOLTIP_LINE_CURSOR} />
-              <Line dataKey="revenue" name="Revenue" stroke={C.inflow} strokeWidth={2.5}
-                dot={false} activeDot={{ r: 4 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
-      </Card>
+      <Panel title="Operating companies">
+        <div className="opco-cards">
+          {OPCOS.map((o) => (
+            <OpcoCard key={o.id} opco={o} />
+          ))}
+        </div>
+      </Panel>
 
       <SavingsPanel />
+    </div>
+  )
+}
+
+function OpcoCard({ opco }) {
+  const { data } = useApi(`/wip/${opco.id}`, [opco.id])
+  const s = data?.summary
+  return (
+    <div className="opco-card">
+      <div className="oc-name">{opco.name}</div>
+      <div className="oc-city">{opco.city}</div>
+      <div className="oc-stats">
+        <div>
+          <span>WIP</span>
+          <b>{s ? eurK(s.wip_value) : '—'}</b>
+        </div>
+        <div>
+          <span>Projects</span>
+          <b>{s?.active_projects ?? '—'}</b>
+        </div>
+        <div>
+          <span>Risk</span>
+          <b className={s ? 'risk-' + s.risk_level : ''}>{s?.risk_level || '—'}</b>
+        </div>
+      </div>
     </div>
   )
 }

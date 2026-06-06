@@ -8,116 +8,92 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { eur } from '../api'
 import { useApi, useForecastOpco } from '../hooks/useForecast'
-import { C, fmtK, TOOLTIP_LINE_CURSOR } from '../theme'
-import ChartTooltip from '../components/ChartTooltip'
-import { Card, ChartSkeleton, StatusPill, EmptyState } from '../components/ui'
-import KpiCard from '../components/KpiCard'
-import OpcoPicker from '../components/OpcoPicker'
-import { IconLayers, IconAlert, IconWallet, IconBox, IconHardHat } from '../components/icons'
+import { COLORS, SCENARIOS, opcoMeta, eur, eurK, signed, sumKey } from '../altis/format'
+import { Panel, Kpi, Skeleton, Empty, ChartTip } from '../components/primitives'
+import OpcoTabs from '../components/OpcoTabs'
+
+const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function OpcoMD({ scenario, lockedOpco }) {
   const [opco, setOpco] = useState(lockedOpco || 'Opco_B')
-  const fc = useForecastOpco(scenario, opco)
-  const wip = useApi(`/wip/${opco}`, [opco])
+  const oId = lockedOpco || opco
+  const o = opcoMeta(oId)
+  const fc = useForecastOpco(scenario, oId)
+  const wip = useApi(`/wip/${oId}`, [oId])
 
-  const rows = (fc.data?.weeks || []).map((w) => ({
-    week: `W${w.forecast_week}`,
-    net: Number(w.net_cashflow),
-  }))
+  const weeks = (fc.data?.weeks || []).map((w) => ({ week: `W${w.forecast_week}`, net: Number(w.net_cashflow) }))
+  const net13 = sumKey(fc.data?.weeks || [], 'net_cashflow')
   const s = wip.data?.summary
 
   return (
-    <div className="space-y-6">
-      <OpcoPicker opco={opco} onChange={setOpco} lockedOpco={lockedOpco} />
+    <div className="view anim">
+      <OpcoTabs opco={opco} setOpco={setOpco} locked={lockedOpco} />
 
-      {wip.loading ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <ChartSkeleton key={i} height={96} />)}
-        </div>
-      ) : s ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard label="WIP value (90d)" value={eur(s.wip_value)} accent="indigo" icon={IconWallet} />
-          <KpiCard label="Proyectos activos" value={s.active_projects} accent="slate" icon={IconLayers} />
-          <KpiCard label="Run rate semanal" value={eur(s.weekly_run_rate)} accent="green" icon={IconBox} />
-          <KpiCard
-            label="Nivel de riesgo"
-            value={s.risk_level?.toUpperCase()}
-            accent={s.risk_level === 'high' ? 'red' : s.risk_level === 'medium' ? 'amber' : 'green'}
-            icon={IconAlert}
-          />
-        </div>
-      ) : null}
+      <div className="kpi-row k4">
+        <Kpi label="WIP value" value={s ? eurK(s.wip_value) : '—'} accent="ink" sub={(s?.active_projects ?? '—') + ' active projects'} />
+        <Kpi label="Weekly run-rate" value={s ? eurK(s.weekly_run_rate) : '—'} accent="green" sub="milestone billing" />
+        <Kpi label="13-week net" value={fc.data ? signed(net13) : '—'} accent={net13 >= 0 ? 'green' : 'copper'} sub={SCENARIOS[scenario]?.label} />
+        <Kpi
+          label="Exposure risk"
+          value={s ? s.risk_level.toUpperCase() : '—'}
+          accent={s?.risk_level === 'high' ? 'copper' : s?.risk_level === 'medium' ? 'amber' : 'green'}
+          sub="WIP vs schedule"
+        />
+      </div>
 
-      <Card
-        title={`Cash 13 semanas — ${opco}`}
-        subtitle={`Escenario ${scenario}`}
-        icon={IconLayers}
-        action={
-          s && (
-            <StatusPill status={s.risk_level === 'high' ? 'breach' : s.risk_level === 'medium' ? 'watch' : 'safe'}>
-              Riesgo {s.risk_level}
-            </StatusPill>
-          )
-        }
-      >
+      <Panel title={'Net cash · 13 weeks · ' + o.name} hint={SCENARIOS[scenario]?.label + ' scenario'}>
         {fc.loading ? (
-          <ChartSkeleton height={280} />
+          <Skeleton height={250} />
         ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={250}>
+            <AreaChart data={weeks} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="opcoFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={C.primary} stopOpacity={0.35} />
-                  <stop offset="95%" stopColor={C.primary} stopOpacity={0} />
+                  <stop offset="0%" stopColor={COLORS.greenSoft} stopOpacity={0.28} />
+                  <stop offset="100%" stopColor={COLORS.greenSoft} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={44} />
-              <Tooltip content={<ChartTooltip />} cursor={TOOLTIP_LINE_CURSOR} />
-              <Area dataKey="net" name="Net cashflow" stroke={C.primary} fill="url(#opcoFill)"
-                strokeWidth={2.5} activeDot={{ r: 4 }} />
+              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
+              <Tooltip content={<ChartTip />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
+              <Area dataKey="net" name="Net cash" stroke={COLORS.greenSoft} fill="url(#opcoFill)" strokeWidth={2.4} />
             </AreaChart>
           </ResponsiveContainer>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Top proyectos por facturación" subtitle="Últimos 90 días" icon={IconHardHat}>
+      <Panel title="WIP exposure · top projects">
         {wip.loading ? (
-          <ChartSkeleton height={200} />
+          <Skeleton height={220} />
         ) : (wip.data?.top_projects || []).length === 0 ? (
-          <EmptyState title="Sin proyectos en el período" hint="No hay facturación en los últimos 90 días para este opco." />
+          <Empty title="No billing in the last 90 days" />
         ) : (
-          <div className="-mx-2 overflow-x-auto">
-            <table className="w-full min-w-[480px] text-sm">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
-                  <th className="px-2 pb-2 font-semibold">Doc</th>
-                  <th className="px-2 pb-2 font-semibold">GL</th>
-                  <th className="px-2 pb-2 text-right font-semibold">Facturado</th>
-                  <th className="px-2 pb-2 text-right font-semibold">Txns</th>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Doc</th>
+                <th>Scope</th>
+                <th>GL</th>
+                <th className="r">Billed to date</th>
+                <th className="r">Txns</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(wip.data?.top_projects || []).slice(0, 8).map((p, i) => (
+                <tr key={i}>
+                  <td className="mono">{p.doc_number}</td>
+                  <td className="muted">{p.gl_label || '—'}</td>
+                  <td className="mono muted">{p.gl_account}</td>
+                  <td className="r b">{eur(p.total_billed)}</td>
+                  <td className="r muted">{p.transaction_count}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {(wip.data?.top_projects || []).slice(0, 8).map((p, i) => (
-                  <tr key={i} className="border-t border-slate-100 transition hover:bg-slate-50/60">
-                    <td className="px-2 py-2.5 font-mono text-xs text-slate-700">{p.doc_number}</td>
-                    <td className="px-2 py-2.5 text-slate-500">{p.gl_label || p.gl_account}</td>
-                    <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-800">
-                      {eur(p.total_billed)}
-                    </td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-400">
-                      {p.transaction_count}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         )}
-      </Card>
+      </Panel>
     </div>
   )
 }

@@ -176,6 +176,31 @@ def get_actuals_weekly(
     return {"opco": opco, "weeks": rows}
 
 
+# GET /sources  — conectores ERP (onboarding): sistemas reales + última sync
+@router.get("/sources")
+def get_sources(user: dict = Depends(get_current_user)):
+    con = get_connection()
+    systems = query(
+        con,
+        "SELECT system, COUNT(*) AS transactions, MAX(date) AS last_date "
+        "FROM transactions GROUP BY system ORDER BY transactions DESC",
+    )
+    total = query(con, "SELECT COUNT(*) AS n FROM transactions")
+    mapped = query(con, "SELECT COUNT(*) AS n FROM gl_mapping")
+    log = query(
+        con,
+        "SELECT timestamp, rows_inserted FROM reconciliation_log ORDER BY id DESC LIMIT 1",
+    )
+    con.close()
+    return {
+        "systems": systems,
+        "total_transactions": int(total[0]["n"]) if total else 0,
+        "gl_accounts_mapped": int(mapped[0]["n"]) if mapped else 0,
+        "last_sync": log[0]["timestamp"] if log else None,
+        "last_rows_inserted": int(log[0]["rows_inserted"]) if log else 0,
+    }
+
+
 # 11. GET /stats  — cualquier usuario autenticado (KPIs de cabecera)
 @router.get("/stats")
 def get_stats(user: dict = Depends(get_current_user)):

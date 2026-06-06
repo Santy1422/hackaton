@@ -70,6 +70,9 @@ def compute_savings(con) -> dict:
     active = [o for o in revenue if revenue[o] > 0]
     best_dso = min(dso[o] for o in active)
 
+    # working capital en cuentas por cobrar (baseline) para el % headline
+    wc_baseline = sum(dso[o] * (revenue[o] / 365.0) for o in active)
+
     opcos = []
     for opco in sorted(revenue):
         rev = revenue[opco]
@@ -120,7 +123,29 @@ def compute_savings(con) -> dict:
         round(100 * portfolio["total_annual_saving"] / portfolio["revenue_2025"], 2)
         if portfolio["revenue_2025"] else 0.0
     )
-    return {"opcos": opcos, "portfolio": portfolio, "assumptions": _assumptions()}
+
+    # ── EL porcentaje headline: reducción de working capital inmovilizado ──
+    # (mapea al benchmark de industria 15-25% para forecasting 13 semanas)
+    wc_reduction_pct = (
+        round(100 * portfolio["dso_cash_released"] / wc_baseline, 1)
+        if wc_baseline else 0.0
+    )
+    portfolio["working_capital_baseline"] = round(wc_baseline, 2)
+    portfolio["working_capital_reduction_pct"] = wc_reduction_pct
+    portfolio["headline_saving_pct"] = wc_reduction_pct
+
+    return {
+        "opcos": opcos,
+        "portfolio": portfolio,
+        "headline": {
+            "metric": "working_capital_reduction_pct",
+            "value_pct": wc_reduction_pct,
+            "statement": f"El modelo libera ~{wc_reduction_pct:.0f}% del working capital inmovilizado en cuentas por cobrar.",
+            "benchmark_range_pct": [15, 25],
+            "benchmark_source": "13-week cash forecasting → 15-25% working capital efficiency",
+        },
+        "assumptions": _assumptions(),
+    }
 
 
 def _assumptions() -> dict:
