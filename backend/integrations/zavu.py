@@ -45,7 +45,6 @@ def send_whatsapp(
 ) -> dict:
     """Envía un WhatsApp por Zavu. Devuelve {sent, id?, status?, reason?}."""
     api_key = os.getenv("ZAVU_API_KEY")
-    sender = os.getenv("ZAVU_SENDER", DEFAULT_SENDER)
 
     body: dict = {"to": to, "channel": "whatsapp"}
     if template_id:

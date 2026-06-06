@@ -49,6 +49,14 @@ if __name__ == "__main__":
         print("✅ Models complete")
 
     if cmd in ("serve", "all"):
+        import os
+
         import uvicorn
 
-        uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+        # Railway/Heroku inyectan $PORT; reload solo en dev (RELOAD=1).
+        uvicorn.run(
+            "api.main:app",
+            host="0.0.0.0",
+            port=int(os.getenv("PORT", "8000")),
+            reload=os.getenv("RELOAD", "0") == "1",
+        )

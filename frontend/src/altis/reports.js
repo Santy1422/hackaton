@@ -4,7 +4,6 @@
    summary · covenant · 13-week detail · drivers · scenario comparison ·
    methodology + audit trail. Uses html2pdf.
    ============================================================================ */
-import html2pdf from 'html2pdf.js'
 import { apiGet, apiPost } from '../api'
 import {
   DRIVERS,
@@ -305,6 +304,8 @@ export async function generateReport(kind, scenario) {
     document.body.appendChild(holder)
     const fname = `Altis-${kind === 'weekly' ? 'Weekly' : 'Monthly'}-CashFlow-${SCENARIOS[scenario].label.replace(/\s/g, '')}.pdf`
 
+    // Carga diferida: html2pdf (~1MB) solo cuando se genera un informe.
+    const html2pdf = (await import('html2pdf.js')).default
     await html2pdf()
       .set({
         margin: 0,

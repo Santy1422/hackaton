@@ -71,7 +71,40 @@ Headroom = cumulative_cf − threshold. Status: SAFE / WATCH / BREACH.
 DuckDB es el motor analítico. `python db/load_to_postgres.py` espeja las
 tablas a Postgres (Railway) para inspección desde un cliente SQL.
 
+## Deploy
+
+**Backend** (FastAPI + Postgres). Cualquier host con Python (Railway / Render / Fly).
+El `Procfile` ya trae el comando de prod:
+
+```
+web: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+```
+
+Variables de entorno (ver `backend/.env.example`):
+
+| Var | Para qué |
+|-----|----------|
+| `DATABASE_URL` | Postgres (requerido) |
+| `JWT_SECRET` | firma de tokens (poné uno largo y real) |
+| `CORS_ORIGINS` | URL(s) del frontend desplegado, coma-separadas |
+| `ANTHROPIC_API_KEY` | informes narrados (opcional) |
+| `ZAVU_API_KEY` · `ENABLE_SCHEDULER` | WhatsApp + crons (opcional) |
+
+El schema se crea solo al arrancar (`init_schema`, idempotente). Sembrá los usuarios
+demo una vez con `python run.py seed`.
+
+**Frontend** (Vite/React, estático). Build → subí `dist/` a cualquier host estático
+(Vercel / Netlify / Railway). Configurá:
+
+```
+VITE_API_URL=https://tu-backend.example   # ver frontend/.env.example
+npm run build                              # genera dist/
+```
+
+Recordá poner la URL del frontend en `CORS_ORIGINS` del backend.
+
 ## Notas
 
 - `data/raw/*.xlsx` y `*.duckdb` están en `.gitignore` (datos financieros reales).
 - El frontend usa Tailwind (preferencia del proyecto) en vez de CSS plano.
+- `html2pdf` se carga de forma diferida (solo al generar un informe) para no inflar el bundle.

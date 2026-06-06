@@ -1,5 +1,6 @@
 """FastAPI app — Altis Groep Forecast API."""
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -20,6 +21,15 @@ from .routes import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Schema idempotente al arrancar (CREATE TABLE IF NOT EXISTS). Best-effort.
+    try:
+        from db.database import get_connection, init_schema
+
+        con = get_connection()
+        init_schema(con)
+        con.close()
+    except Exception:
+        pass
     # Crons de WhatsApp (solo si ENABLE_SCHEDULER=1).
     try:
         from scheduler import start_scheduler
@@ -32,9 +42,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Altis Groep Forecast API", lifespan=lifespan)
 
+# Orígenes permitidos: CORS_ORIGINS (coma-separados) en prod; localhost en dev.
+_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:4173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[o.strip() for o in _origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

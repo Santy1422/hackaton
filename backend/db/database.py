@@ -15,17 +15,19 @@ from psycopg.rows import dict_row
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-# psycopg usa postgresql://  (sin el sufijo +asyncpg de SQLAlchemy)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:oJBnSyaXTHsmORVcVfHlDEBqsSJhMlXx@shortline.proxy.rlwy.net:32375/railway",
-).replace("+asyncpg", "")
+# Inyectada por el entorno (Railway/.env). psycopg usa postgresql:// (sin +asyncpg).
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").replace("+asyncpg", "")
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
 def get_connection() -> psycopg.Connection:
     """Conexión Postgres en autocommit, filas como dicts."""
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL no está definida. Configurala en el entorno o en backend/.env "
+            "(ver .env.example)."
+        )
     return psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row)
 
 
