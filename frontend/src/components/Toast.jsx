@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 /**
  * Toasts in-app — reemplazan los alert()/confirm() del navegador con feedback
@@ -43,16 +43,19 @@ export function ToastProvider({ children }) {
     return () => map.forEach((t) => clearTimeout(t))
   }, [])
 
-  const api = useRef({
-    success: (title, hint) => push('success', title, hint),
-    error: (title, hint) => push('error', title, hint, 7000),
-    info: (title, hint) => push('info', title, hint),
-    show: push,
-    dismiss,
-  })
+  const api = useMemo(
+    () => ({
+      success: (title, hint) => push('success', title, hint),
+      error: (title, hint) => push('error', title, hint, 7000),
+      info: (title, hint) => push('info', title, hint),
+      show: push,
+      dismiss,
+    }),
+    [push, dismiss]
+  )
 
   return (
-    <ToastCtx.Provider value={api.current}>
+    <ToastCtx.Provider value={api}>
       {children}
       <div className="toast-wrap" role="region" aria-live="polite" aria-label="Notifications">
         {toasts.map((t) => (

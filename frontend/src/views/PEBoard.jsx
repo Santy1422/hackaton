@@ -10,8 +10,8 @@ import {
 } from 'recharts'
 import { useCovenant, useApi, useStats } from '../hooks/useForecast'
 import { useOpcos } from '../altis/hooks'
-import { COLORS, eurK, sharePct } from '../altis/format'
-import { Panel, StatBox, Skeleton, ChartTip } from '../components/primitives'
+import { COLORS, errText, eurK, sharePct } from '../altis/format'
+import { Panel, StatBox, Skeleton, Empty, ChartTip } from '../components/primitives'
 import CovenantCard from '../components/CovenantCard'
 import SavingsPanel from '../components/SavingsPanel'
 
@@ -26,6 +26,9 @@ export default function PEBoard() {
   const systemsLabel = sources?.systems?.length
     ? sources.systems.map((s) => s.system).join(' · ')
     : 'reconciled into one schema'
+
+  if (base.error)
+    return <Empty tone="error" title="Could not load covenant data" hint={errText(base.error)} />
 
   const all = base.data?.all_scenarios
   const threshold = base.data?.covenant_threshold

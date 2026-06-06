@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useAudit } from '../hooks/useAudit'
-import { DRIVERS, DRIVER_COLORS, SCENARIOS, eur, signed } from '../altis/format'
+import { DRIVERS, DRIVER_COLORS, SCENARIOS, errText, eur, signed } from '../altis/format'
 import { Skeleton, Empty } from './primitives'
 
 /**
@@ -47,7 +47,7 @@ export default function AuditModal({ scenario, week, weekObj, onClose }) {
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={92} />)}
           </div>
         )}
-        {error && <Empty tone="error" title="Could not load audit trail" hint={error} />}
+        {error && <Empty tone="error" title="Could not load audit trail" hint={errText(error)} />}
 
         {data && (
           <>

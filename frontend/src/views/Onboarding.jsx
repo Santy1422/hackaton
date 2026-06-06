@@ -21,9 +21,12 @@ export default function Onboarding({ user, onDone }) {
 
   useEffect(() => {
     let on = true
-    setSrcErr(null)
     apiGet('/sources')
-      .then((d) => on && setSources(d))
+      .then((d) => {
+        if (!on) return
+        setSources(d)
+        setSrcErr(null)
+      })
       .catch((e) => on && setSrcErr(e.hint || e.message || 'Could not reach accounting systems.'))
     return () => {
       on = false
@@ -141,7 +144,15 @@ export default function Onboarding({ user, onDone }) {
           </p>
         </div>
 
-        {!ready ? (
+        {srcErr ? (
+          <div className="onb-note onb-note-err" style={{ justifyContent: 'space-between' }}>
+            <span>⚠ {srcErr}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="onb-skip" onClick={() => setReload((n) => n + 1)}>Retry</button>
+              <button className="onb-skip" onClick={onDone}>Skip</button>
+            </div>
+          </div>
+        ) : !ready ? (
           <div className="onb-note" style={{ justifyContent: 'center' }}>
             <span className="onb-dot" /> Connecting to accounting systems…
           </div>
@@ -171,7 +182,7 @@ export default function Onboarding({ user, onDone }) {
           </div>
         )}
 
-        {phase === 'review' && (
+        {phase === 'review' && !srcErr && ready && (
           <>
             <div className="onb-note">
               <span className="onb-dot" /> {systems.length} source{systems.length === 1 ? '' : 's'} reachable ·{' '}

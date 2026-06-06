@@ -1,110 +1,88 @@
-# Altis Groep — 13-Week Cash Flow Forecast
+# Altis Groep — Weather-Aware 13-Week Cash Flow Forecast
 
-Plataforma de forecasting de caja a 13 semanas para Altis Groep (portfolio
-de techado PE-backed, 4 OpCos). Ingesta multi-sistema → reconciliación GL →
-5 drivers de caja → 3 escenarios → dashboard con audit trail completo.
+Liquidity forecasting platform for Altis Groep, a PE-backed Dutch roofing
+portfolio. Multi-system ingestion → GL reconciliation → 5 cash drivers → 3
+scenarios → role-based dashboard with a full audit trail, Claude-written reports,
+and a WhatsApp assistant.
 
-## Quick start
+**Live**
+- Frontend: https://frontend-production-5272f.up.railway.app
+- Backend: https://backend-production-a629e.up.railway.app · `/api/health` · `/docs`
 
-```bash
-# 1. Backend
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+Demo logins (password `altis2025`): `board@altis.com` · `cfo@altis.com` ·
+`md@altis.com` · `lead@altis.com`.
 
-# 2. Datos (los .xlsx van en data/raw/) + modelos
-python run.py ingest      # parsea xlsx → DuckDB (24.247 txns)
-python run.py model       # corre M1-M5 → forecast_13w (156 filas)
-python run.py serve       # FastAPI en http://localhost:8000/docs
+## What it does
 
-# 3. Frontend (otra terminal)
-cd frontend
-npm install
-npm run dev               # http://localhost:5173
-```
+- **Ingestion** — parses the accounting exports (Snelstart, Exact, Gilde, Yuki)
+  into one unified `transactions` table.
+- **Driver model (M1–M5)** — milestone billing, materials, subcontractors,
+  collections (DSO), and **weather** (empirically calibrated) → `forecast_13w`,
+  the single source of truth.
+- **Scenarios** — Base / Wet quarter / Dry quarter, with covenant headroom and
+  SAFE/WATCH/BREACH status.
+- **Roles** — PE Board, CFO, Opco MD, Project Lead, each with its own view; JWT auth.
+- **Audit trail** — every figure traces back to its driver, assumptions and source rows.
+- **Reports** — weekly/monthly PDF; the prose is written by Claude over real data.
+- **WhatsApp (Zavu)** — covenant alerts, scheduled digests, and an inbound bot
+  that answers questions and replies with the analysis + PDF. Plus an MCP server.
 
-`python run.py all` hace ingest + model + serve de una.
-
-## Arquitectura
+## Architecture
 
 ```
 data/raw/*.xlsx
-   → ingestion/   (gb_snelstart, peter_ummels, reconcile)
-   → db/          (DuckDB: schema unificado, single source of truth)
-   → models/      (M1 billing · M2 materials · M3 subcon · M4 collections · M5 weather → scenario_engine)
-   → api/         (FastAPI: 15 endpoints, forecast/audit/covenant/...)
-   → frontend/    (React + Vite + Tailwind + Recharts: 4 vistas de rol)
+  → ingestion/      (parsers per system → reconcile)
+  → db/             (Postgres: unified schema, single source of truth)
+  → models/         (M1 billing · M2 materials · M3 subcon · M4 collections · M5 weather → scenario_engine)
+  → api/            (FastAPI: auth, forecast, covenant, audit, savings, reports, notify/WhatsApp)
+  → frontend/       (React + Vite + Tailwind + Recharts: 4 role views)
+  + mcp_server.py   (MCP tools over the forecast + Zavu)
+  + scheduler.py    (APScheduler crons → WhatsApp)
 ```
 
-`forecast_13w` es la **única fuente de verdad**: las 4 vistas leen de ahí,
-ninguna recalcula. Cada fila guarda sus supuestos (audit trail).
+`forecast_13w` is the **single source of truth** — every view reads from it.
 
-## Modelos
+## Quick start (local)
 
-- **M1 — Milestone billing:** índice estacional (2024-2025) × run-rate por OpCo × multiplicador de escenario.
-- **M2 — Materials:** OLS lag, `materials[t] = α + β·billing[t+2]` (fallback 33%).
-- **M3 — Subcontractors:** 20% del milestone distribuido por payment terms (net14/30/60).
-- **M4 — Collections:** billing desplazado por DSO/7 semanas, por OpCo y escenario.
-- **M5 — Weather:** umbrales (lluvia>15mm, helada<0°C, viento>Bft6) → difiere caja; fetch Open-Meteo con fallback sintético.
+```bash
+# Backend
+cd backend && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env            # set DATABASE_URL + secrets
+python run.py seed              # create the 4 role users
+python run.py ingest            # xlsx → Postgres
+python run.py model             # M1–M5 → forecast_13w
+python run.py serve             # http://localhost:8000/docs
 
-## Escenarios
-
-| | revenue | DSO | weather |
-|---|---|---|---|
-| **base** | ×1.00 | ×1.00 | on |
-| **wet_qtr** | ×0.82 | ×1.20 | on (+lluvia) |
-| **dry_qtr** | ×1.12 | ×0.86 | off |
-
-## Audit trail
-
-`GET /api/audit/week/{scenario}/{week}` traza cada número:
-driver → assumption → cuentas GL → filas origen → archivos fuente.
-En el dashboard: CFO → click en una barra → modal DrillDown.
-
-## Covenant
-
-Umbral `min_cumulative_cashflow = -€500.000` a 13 semanas.
-Headroom = cumulative_cf − threshold. Status: SAFE / WATCH / BREACH.
-
-## Postgres mirror (opcional)
-
-DuckDB es el motor analítico. `python db/load_to_postgres.py` espeja las
-tablas a Postgres (Railway) para inspección desde un cliente SQL.
-
-## Deploy
-
-**Backend** (FastAPI + Postgres). Cualquier host con Python (Railway / Render / Fly).
-El `Procfile` ya trae el comando de prod:
-
-```
-web: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+# Frontend (another terminal)
+cd frontend && npm install
+cp .env.example .env            # VITE_API_URL=http://localhost:8000
+npm run dev                     # http://localhost:5173
 ```
 
-Variables de entorno (ver `backend/.env.example`):
+## Stack
 
-| Var | Para qué |
-|-----|----------|
-| `DATABASE_URL` | Postgres (requerido) |
-| `JWT_SECRET` | firma de tokens (poné uno largo y real) |
-| `CORS_ORIGINS` | URL(s) del frontend desplegado, coma-separadas |
-| `ANTHROPIC_API_KEY` | informes narrados (opcional) |
-| `ZAVU_API_KEY` · `ENABLE_SCHEDULER` | WhatsApp + crons (opcional) |
+- **Backend** — FastAPI · Postgres (psycopg) · pandas/numpy · APScheduler · Anthropic SDK (Claude) · fpdf2 · Zavu (WhatsApp) · MCP
+- **Frontend** — React 18 · Vite · Tailwind · Recharts · html2pdf
 
-El schema se crea solo al arrancar (`init_schema`, idempotente). Sembrá los usuarios
-demo una vez con `python run.py seed`.
+## Deploy (Railway · project `intuitive-youthfulness`)
 
-**Frontend** (Vite/React, estático). Build → subí `dist/` a cualquier host estático
-(Vercel / Netlify / Railway). Configurá:
+Three services in one project: **Postgres**, **backend**, **frontend**. Both apps
+are connected to GitHub (`Santy1422/hackaton`) with root dirs `backend`/`frontend`
+and auto-deploy on push to `main`. Set env vars in each service's dashboard
+(`.env` is gitignored and not deployed). Register the Zavu webhook at
+`<backend>/api/notify/whatsapp/webhook`.
 
-```
-VITE_API_URL=https://tu-backend.example   # ver frontend/.env.example
-npm run build                              # genera dist/
-```
+## Docs
 
-Recordá poner la URL del frontend en `CORS_ORIGINS` del backend.
+- `backend/README.md` — API commands, endpoints, env, deploy.
+- `backend/docs/AUTH.md` — JWT auth & roles.
+- `backend/docs/WEATHER.md` — two-signal weather model.
+- `backend/docs/WHATSAPP.md` — Zavu, webhook, crons, templates, PDF, MCP.
+- `frontend/README.md` — frontend stack, views, env, deploy.
 
-## Notas
+## Notes
 
-- `data/raw/*.xlsx` y `*.duckdb` están en `.gitignore` (datos financieros reales).
-- El frontend usa Tailwind (preferencia del proyecto) en vez de CSS plano.
-- `html2pdf` se carga de forma diferida (solo al generar un informe) para no inflar el bundle.
+- `data/raw/*.xlsx` and `*.duckdb` are gitignored (real financial data).
+- WhatsApp proactive sends need a Meta-approved template; inbound replies work
+  within the 24h window opened when the user messages the bot (see WHATSAPP.md).
