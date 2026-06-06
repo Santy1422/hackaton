@@ -78,6 +78,15 @@ def verify_signature(raw_body: bytes, signature: str | None, headers: dict | Non
 DEFAULT_SENDER = "kd7fv57av8kwqgncjzckcrnnn9885nv4"
 
 
+def normalize_to(num: str) -> str:
+    """Normaliza un destino a E.164 limpio. Arregla el trunk-0 holandés
+    (`+3106…` → `+316…`), que WhatsApp rechaza."""
+    n = "+" + "".join(c for c in (num or "") if c.isdigit())
+    if n.startswith("+310") and len(n) > 4:  # NL: sin el 0 nacional tras +31
+        n = "+31" + n[4:]
+    return n
+
+
 def send_whatsapp(
     to: str,
     text: str | None = None,
@@ -87,6 +96,7 @@ def send_whatsapp(
 ) -> dict:
     """Envía un WhatsApp por Zavu. Devuelve {sent, id?, status?, reason?}."""
     api_key = os.getenv("ZAVU_API_KEY")
+    to = normalize_to(to)
 
     body: dict = {"to": to, "channel": "whatsapp"}
     if template_id:
@@ -105,6 +115,7 @@ def send_whatsapp(
 
 def send_document(to: str, media_url: str, caption: str | None = None) -> dict:
     """Envía un PDF/documento por WhatsApp (Zavu messageType=document)."""
+    to = normalize_to(to)
     body = {
         "to": to,
         "channel": "whatsapp",

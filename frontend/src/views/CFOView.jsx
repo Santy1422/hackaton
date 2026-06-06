@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceDot,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -17,8 +18,6 @@ import { Panel, StatBox, DriverChips, Skeleton, Empty, ChartTip } from '../compo
 import SkyBand from '../components/SkyBand'
 import AuditModal from '../components/AuditModal'
 import BillingDriversPanel from '../components/BillingDriversPanel'
-
-const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function CFOView({ scenario }) {
   const [week, setWeek] = useState(null)
@@ -79,14 +78,15 @@ export default function CFOView({ scenario }) {
           <Skeleton height={330} />
         ) : (
           <ResponsiveContainer width="100%" height={330}>
-            <ComposedChart data={chart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <ComposedChart data={chart} margin={{ top: 18, right: 12, left: 4, bottom: 0 }}>
               <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
-              <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
+              <YAxis tickFormatter={eurK} tickLine={false} axisLine={false} width={56} />
+              <Tooltip content={<ChartTip unit="per week · € net of VAT" />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
               {threshold != null && (
                 <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4"
-                  strokeWidth={1.4} ifOverflow="extendDomain" />
+                  strokeWidth={1.4} ifOverflow="extendDomain"
+                  label={{ value: `Covenant floor ${eurK(threshold)}`, position: 'insideBottomRight', fill: COLORS.copper, fontSize: 10 }} />
               )}
               <Bar dataKey="inflow" name="Collections in" fill={COLORS.green} radius={[3, 3, 0, 0]}
                 onClick={(d) => setWeek(d.forecast_week)} cursor="pointer" />
@@ -94,14 +94,19 @@ export default function CFOView({ scenario }) {
                 onClick={(d) => setWeek(d.forecast_week)} cursor="pointer" />
               <Line dataKey="cumulative" name="Cumulative cash" stroke={COLORS.ink} strokeWidth={2.4}
                 dot={false} activeDot={{ r: 4 }} />
+              {!loading && lowWeek.week != null && (
+                <ReferenceDot x={`W${lowWeek.week}`} y={Number(lowWeek.cumulative_cf)} r={5}
+                  fill={COLORS.ink} stroke="#fff" strokeWidth={2} ifOverflow="extendDomain"
+                  label={{ value: `Cash low · W${lowWeek.week}`, position: 'top', fill: COLORS.ink, fontSize: 10, fontWeight: 700 }} />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         )}
         <div className="legend">
-          <span><i style={{ background: COLORS.green }} />Collections in</span>
+          <span><i style={{ background: COLORS.green }} />Collections in (customer payments received)</span>
           <span><i style={{ background: COLORS.copper }} />Materials + subcontractors out</span>
-          <span><i className="ln" style={{ background: COLORS.ink }} />Cumulative cash</span>
-          <span><i className="dl" style={{ borderColor: COLORS.copper }} />Covenant floor</span>
+          <span><i className="ln" style={{ background: COLORS.ink }} />Cumulative cash (running balance)</span>
+          <span><i className="dl" style={{ borderColor: COLORS.copper }} />Covenant floor (bank minimum)</span>
         </div>
       </Panel>
 

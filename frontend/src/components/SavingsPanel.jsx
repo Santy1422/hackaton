@@ -9,10 +9,8 @@ import {
   YAxis,
 } from 'recharts'
 import { useApi } from '../hooks/useForecast'
-import { COLORS, eur } from '../altis/format'
+import { COLORS, eur, eurK } from '../altis/format'
 import { Panel, Kpi, Skeleton, Empty, ChartTip } from './primitives'
-
-const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 /** ROI of the system: annual savings per opco (DSO + cash buffer + weather). */
 export default function SavingsPanel() {
@@ -30,6 +28,10 @@ export default function SavingsPanel() {
 
   return (
     <Panel title="Estimated annual savings by opco" hint="ROI · DSO + cash buffer + weather (calibrated)">
+      <p className="panel-sub">
+        Yearly cash benefit per operating company from acting on the forecast: collecting faster (DSO),
+        holding a thinner safety buffer, and planning around weather. Taller bar = bigger upside.
+      </p>
       {loading ? (
         <Skeleton height={300} />
       ) : rows.length === 0 ? (
@@ -44,15 +46,15 @@ export default function SavingsPanel() {
             </div>
           )}
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={rows} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <BarChart data={rows} margin={{ top: 10, right: 12, left: 4, bottom: 0 }}>
               <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="opco" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
-              <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
+              <YAxis tickFormatter={eurK} tickLine={false} axisLine={false} width={56} />
+              <Tooltip content={<ChartTip unit="estimated saving · per year" />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
               <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              <Bar dataKey="DSO" stackId="s" fill={COLORS.green} />
-              <Bar dataKey="Buffer" stackId="s" fill={COLORS.ink} />
-              <Bar dataKey="Weather" stackId="s" fill={COLORS.rain} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="DSO" name="Faster collections (DSO)" stackId="s" fill={COLORS.green} />
+              <Bar dataKey="Buffer" name="Thinner cash buffer" stackId="s" fill={COLORS.ink} />
+              <Bar dataKey="Weather" name="Weather planning" stackId="s" fill={COLORS.rain} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           {data?.assumptions && (

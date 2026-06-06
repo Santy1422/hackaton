@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiPost } from '../api'
-import { generateReport } from '../altis/reports'
+import { apiDownload, apiPost } from '../api'
 
 /**
  * Asistente in-app (Claude sobre forecast_13w) vía POST /api/notify/ask.
@@ -50,7 +49,8 @@ export default function Assistant({ scenario = 'base' }) {
       return [...m, { role: 'bot', report: kind, scenario, status: 'working' }]
     })
     try {
-      await generateReport(kind, scenario)
+      // PDF server-side (datos reales, sin html2pdf en el browser).
+      await apiDownload(`/reports/download/${scenario}`, `altis-forecast-${scenario}.pdf`)
       setMsgs((m) => m.map((x, i) => (i === at.i ? { ...x, status: 'done' } : x)))
     } catch (e) {
       setMsgs((m) => m.map((x, i) => (i === at.i ? { ...x, status: 'error', err: e.message } : x)))

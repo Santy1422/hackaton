@@ -1,7 +1,7 @@
 import { DRIVERS, DRIVER_COLORS, eur, eurK, sumKey } from '../altis/format'
 
 /* ---- recharts tooltip (design styled) ------------------------------------ */
-export function ChartTip({ active, payload, label }) {
+export function ChartTip({ active, payload, label, unit }) {
   if (!active || !payload?.length) return null
   return (
     <div
@@ -12,22 +12,28 @@ export function ChartTip({ active, payload, label }) {
         padding: '9px 11px',
         boxShadow: '0 12px 30px -12px rgba(28,37,48,.3)',
         fontFamily: 'var(--sans)',
+        minWidth: 168,
       }}
     >
       {label != null && (
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-soft)', marginBottom: 5 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink)', marginBottom: 6 }}>
           {label}
         </div>
       )}
       {payload.map((p, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 3, background: p.color || p.fill }} />
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginTop: i ? 3 : 0 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 3, background: p.color || p.fill, flex: 'none' }} />
           <span style={{ color: 'var(--ink-soft)' }}>{p.name}</span>
           <span style={{ marginLeft: 'auto', fontFamily: 'var(--mono)', fontWeight: 600 }}>
             {eur(p.value)}
           </span>
         </div>
       ))}
+      {unit && (
+        <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 7, paddingTop: 6, borderTop: '1px solid var(--hair)', fontFamily: 'var(--mono)' }}>
+          {unit}
+        </div>
+      )}
     </div>
   )
 }

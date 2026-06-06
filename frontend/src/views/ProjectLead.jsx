@@ -16,12 +16,11 @@ import {
   normalizeWeather,
   errText,
   eur,
+  eurK,
 } from '../altis/format'
 import { Panel, Skeleton, Empty, ChartTip } from '../components/primitives'
 import OpcoTabs from '../components/OpcoTabs'
 import SkyBand from '../components/SkyBand'
-
-const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function ProjectLead({ scenario, lockedOpco }) {
   const [opco, setOpco] = useState(lockedOpco || 'Opco_B')
@@ -88,20 +87,24 @@ export default function ProjectLead({ scenario, lockedOpco }) {
       </div>
 
       <Panel title="Materials outflow vs milestone billing" hint="materials are ordered ~2 weeks ahead of execution">
+        <p className="panel-sub">
+          When the copper bars (materials you pay for) rise weeks before the green bars (milestones you
+          can invoice), that gap is cash you front before getting paid — watch it on tight weeks.
+        </p>
         {fc.loading ? (
           <Skeleton height={250} />
         ) : fc.error ? (
           <Empty tone="error" title="Could not load forecast" hint={errText(fc.error)} />
         ) : (
           <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={bars} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <BarChart data={bars} margin={{ top: 12, right: 12, left: 4, bottom: 0 }}>
               <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
-              <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
+              <YAxis tickFormatter={eurK} tickLine={false} axisLine={false} width={56} />
+              <Tooltip content={<ChartTip unit="per week · €" />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
               <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              <Bar dataKey="billing" name="Milestone billing" fill={COLORS.green} radius={[3, 3, 0, 0]} />
-              <Bar dataKey="materials" name="Materials outflow" fill={COLORS.copper} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="billing" name="Milestone billing (invoiceable)" fill={COLORS.green} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="materials" name="Materials outflow (you pay)" fill={COLORS.copper} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}

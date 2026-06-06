@@ -576,13 +576,27 @@ code {
 }
 .asst-chip:hover { border-color: var(--copper); color: var(--copper); }
 .asst-msg {
-  max-width: 86%; padding: 9px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5;
-  white-space: pre-wrap; word-break: break-word;
+  max-width: 88%; padding: 10px 13px; border-radius: 13px; font-size: 13px; line-height: 1.6;
+  word-break: break-word;
 }
-.asst-msg.user { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 4px; }
-.asst-msg.bot { align-self: flex-start; background: var(--bg); color: var(--ink); border-bottom-left-radius: 4px; }
-.asst-msg.bot.err { background: #fbeae3; color: var(--copper-deep); }
+.asst-msg.user { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
+.asst-msg.bot { align-self: flex-start; background: var(--bg); color: var(--ink); border-bottom-left-radius: 4px; border: 1px solid var(--hair); }
+.asst-msg.bot strong { font-weight: 700; color: var(--ink); }
+.asst-msg.bot.err { background: #fbeae3; color: var(--copper-deep); border-color: #e9c2b4; }
 .asst-msg.typing { font-family: var(--mono); letter-spacing: 0.15em; color: var(--ink-faint); }
+/* cada línea del texto del bot como bloque → espaciado limpio entre líneas */
+.asst-line { display: block; }
+.asst-line:empty { height: 8px; }
+.asst-line + .asst-line { margin-top: 6px; }
+/* acción de descarga de PDF dentro de la respuesta */
+.asst-pdf {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--copper);
+  background: #fff; border: 1px solid var(--hair); border-radius: 9px; padding: 6px 11px;
+  cursor: pointer; transition: 0.15s;
+}
+.asst-pdf:hover { border-color: var(--copper); background: #fbf2ec; }
+.asst-msg.report { font-family: var(--sans); color: var(--ink-soft); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .asst-input { display: flex; gap: 7px; padding: 11px; border-top: 1px solid #eee5d6; }
 .asst-input input {
   flex: 1; font-family: var(--sans); font-size: 13px; padding: 9px 11px;

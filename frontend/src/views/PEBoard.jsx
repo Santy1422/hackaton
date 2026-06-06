@@ -15,8 +15,6 @@ import { Panel, StatBox, Skeleton, Empty, ChartTip } from '../components/primiti
 import CovenantCard from '../components/CovenantCard'
 import SavingsPanel from '../components/SavingsPanel'
 
-const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
-
 export default function PEBoard() {
   const base = useCovenant('base')
   const wet = useCovenant('wet_qtr')
@@ -92,29 +90,34 @@ export default function PEBoard() {
       </div>
 
       <Panel title="Cumulative cash · 13 weeks · three scenarios" hint={`covenant floor ${eurK(threshold)}`}>
+        <p className="panel-sub">
+          Running cash balance week by week under each weather scenario. As long as every line stays
+          above the dashed floor, the bank covenant holds.
+        </p>
         {base.loading ? (
           <Skeleton height={300} />
         ) : (
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={merged} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <LineChart data={merged} margin={{ top: 14, right: 12, left: 4, bottom: 0 }}>
               <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
-              <Tooltip content={<ChartTip />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
+              <YAxis tickFormatter={eurK} tickLine={false} axisLine={false} width={56} />
+              <Tooltip content={<ChartTip unit="cumulative cash · end of week" />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
               {threshold != null && (
-                <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4" strokeWidth={1.4} />
+                <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4" strokeWidth={1.4}
+                  label={{ value: `Covenant floor ${eurK(threshold)}`, position: 'insideBottomRight', fill: COLORS.copper, fontSize: 10 }} />
               )}
-              <Line dataKey="base" name="Base" stroke={COLORS.ink} strokeWidth={2.4} dot={false} />
-              <Line dataKey="wet_qtr" name="Wet quarter" stroke={COLORS.rain} strokeWidth={2.2} dot={false} />
-              <Line dataKey="dry_qtr" name="Dry quarter" stroke={COLORS.green} strokeWidth={2.2} dot={false} />
+              <Line dataKey="base" name="Base (normal weather)" stroke={COLORS.ink} strokeWidth={2.4} dot={false} />
+              <Line dataKey="wet_qtr" name="Wet quarter (more rain)" stroke={COLORS.rain} strokeWidth={2.2} dot={false} />
+              <Line dataKey="dry_qtr" name="Dry quarter (fewer delays)" stroke={COLORS.green} strokeWidth={2.2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         )}
         <div className="legend">
-          <span><i className="ln" style={{ background: COLORS.ink }} />Base</span>
-          <span><i className="ln" style={{ background: COLORS.rain }} />Wet quarter</span>
-          <span><i className="ln" style={{ background: COLORS.green }} />Dry quarter</span>
-          <span><i className="dl" style={{ borderColor: COLORS.copper }} />Covenant floor</span>
+          <span><i className="ln" style={{ background: COLORS.ink }} />Base · normal weather</span>
+          <span><i className="ln" style={{ background: COLORS.rain }} />Wet quarter · more rain delays</span>
+          <span><i className="ln" style={{ background: COLORS.green }} />Dry quarter · fewer delays</span>
+          <span><i className="dl" style={{ borderColor: COLORS.copper }} />Covenant floor · bank minimum</span>
         </div>
       </Panel>
 

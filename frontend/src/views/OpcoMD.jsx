@@ -3,6 +3,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,8 +13,6 @@ import { useApi, useForecastOpco } from '../hooks/useForecast'
 import { COLORS, SCENARIOS, eur, eurK, errText, signed, sumKey } from '../altis/format'
 import { Panel, Kpi, Skeleton, Empty, ChartTip } from '../components/primitives'
 import OpcoTabs from '../components/OpcoTabs'
-
-const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function OpcoMD({ scenario, lockedOpco }) {
   const [opco, setOpco] = useState(lockedOpco || 'Opco_B')
@@ -42,13 +41,17 @@ export default function OpcoMD({ scenario, lockedOpco }) {
       </div>
 
       <Panel title={'Net cash · 13 weeks · ' + oId} hint={SCENARIOS[scenario]?.label + ' scenario'}>
+        <p className="panel-sub">
+          Weekly net cash = collections in − (materials + subcontractors) out. Above zero the week
+          generates cash; below zero it consumes it.
+        </p>
         {fc.loading ? (
           <Skeleton height={250} />
         ) : fc.error ? (
           <Empty tone="error" title="Could not load forecast" hint={errText(fc.error)} />
         ) : (
           <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={weeks} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <AreaChart data={weeks} margin={{ top: 12, right: 12, left: 4, bottom: 0 }}>
               <defs>
                 <linearGradient id="opcoFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={COLORS.greenSoft} stopOpacity={0.28} />
@@ -57,8 +60,9 @@ export default function OpcoMD({ scenario, lockedOpco }) {
               </defs>
               <CartesianGrid stroke={COLORS.grid} vertical={false} />
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
-              <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
-              <Tooltip content={<ChartTip />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
+              <YAxis tickFormatter={eurK} tickLine={false} axisLine={false} width={56} />
+              <Tooltip content={<ChartTip unit="net cash · per week" />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
+              <ReferenceLine y={0} stroke={COLORS.inkFaint} strokeWidth={1} />
               <Area dataKey="net" name="Net cash" stroke={COLORS.greenSoft} fill="url(#opcoFill)" strokeWidth={2.4} />
             </AreaChart>
           </ResponsiveContainer>
