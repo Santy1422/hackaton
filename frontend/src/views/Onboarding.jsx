@@ -227,12 +227,18 @@ function WhatsAppActivate() {
   const base = useApi('/covenant/base', [])
   const wet = useApi('/covenant/wet_qtr', [])
 
-  const [crons, setCrons] = useState([
-    { id: 'wk', label: 'Weekly forecast digest', when: 'Mondays · 08:00', on: true },
-    { id: 'cov', label: 'Covenant alert', when: 'when status → WATCH / BREACH', on: true },
-    { id: 'mo', label: 'Monthly report (PDF)', when: '1st of month · 08:00', on: false },
-  ])
-  const toggle = (id) => setCrons((cs) => cs.map((c) => (c.id === id ? { ...c, on: !c.on } : c)))
+  // Crons 100% del backend: catálogo + estado persistido por usuario.
+  const autos = useApi('/notify/automations', [])
+  const [crons, setCrons] = useState([])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (autos.data?.automations) setCrons(autos.data.automations)
+  }, [autos.data])
+  const toggle = (id) => {
+    const next = !crons.find((c) => c.id === id)?.enabled
+    setCrons((cs) => cs.map((c) => (c.id === id ? { ...c, enabled: next } : c)))
+    apiPost('/notify/automations', { id, enabled: next }).catch(() => {})
+  }
   const activate = () => {
     setSt('connecting')
     setTimeout(() => setSt('active'), 1600)
@@ -309,16 +315,16 @@ function WhatsAppActivate() {
         <div className="wa-cron">
           <div className="wa-cron-h">SCHEDULED AUTOMATIONS</div>
           {crons.map((c) => (
-            <button key={c.id} className={'cron ' + (c.on ? 'on' : '')} onClick={() => toggle(c.id)}>
+            <button key={c.id} className={'cron ' + (c.enabled ? 'on' : '')} onClick={() => toggle(c.id)}>
               <span className="cron-sw"><span /></span>
-              <span className="cron-txt"><b>{c.label}</b><span>{c.when}</span></span>
+              <span className="cron-txt"><b>{c.label}</b><span>{c.schedule}</span></span>
             </button>
           ))}
           <div className="wa-cron-note">Crons run server-side against the latest sync. Editable any time from Settings.</div>
         </div>
       </div>
       <div className="wa-active-foot">
-        <span className="onb-dot" /> WhatsApp connected to <b>{phone}</b> · {crons.filter((c) => c.on).length} automations active
+        <span className="onb-dot" /> WhatsApp connected to <b>{phone}</b> · {crons.filter((c) => c.enabled).length} automations active
       </div>
     </div>
   )

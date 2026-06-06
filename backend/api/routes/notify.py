@@ -2,25 +2,58 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from db.database import get_connection, query
+from db.database import execute, get_connection, query
 from integrations.zavu import send_whatsapp, verify_signature
 from models.assistant import answer_question
 
-from ..auth import require_roles
-from ..validation import validate_scenario
+from ..auth import get_current_user, require_roles
+from ..validation import err, validate_scenario
 from .reports import SCEN_LABEL, _eur, _scenario_stats
 
 router = APIRouter(tags=["notify"])
 
-# Cadencia de los crons (la consume el frontend de automations).
+# Catálogo de crons de WhatsApp (single source of truth, server-side).
+# `default_enabled` es el estado inicial; cada usuario persiste el suyo en DB.
 AUTOMATIONS = [
-    {"id": "weekly_digest", "label": "Weekly forecast digest", "schedule": "Mondays · 08:00", "cron": "0 8 * * 1"},
-    {"id": "covenant_alert", "label": "Covenant alert", "schedule": "when status → WATCH / BREACH", "cron": "0 * * * *"},
-    {"id": "monthly_report", "label": "Monthly report (PDF)", "schedule": "1st of month · 08:00", "cron": "0 8 1 * *"},
+    {"id": "weekly_digest", "label": "Weekly forecast digest", "schedule": "Mondays · 08:00", "cron": "0 8 * * 1", "default_enabled": True},
+    {"id": "covenant_alert", "label": "Covenant alert", "schedule": "when status → WATCH / BREACH", "cron": "0 * * * *", "default_enabled": True},
+    {"id": "monthly_report", "label": "Monthly report (PDF)", "schedule": "1st of month · 08:00", "cron": "0 8 1 * *", "default_enabled": False},
 ]
+AUTOMATION_IDS = {a["id"] for a in AUTOMATIONS}
+
+
+def _ensure_prefs(con) -> None:
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS automation_prefs ("
+        "  user_id INTEGER NOT NULL,"
+        "  automation_id VARCHAR NOT NULL,"
+        "  enabled BOOLEAN NOT NULL,"
+        "  updated_at TIMESTAMP DEFAULT current_timestamp,"
+        "  PRIMARY KEY (user_id, automation_id)"
+        ")"
+    )
+
+
+def _automations_for(con, user_id: int) -> list[dict]:
+    """Catálogo + estado por usuario (default si aún no tocó el toggle)."""
+    _ensure_prefs(con)
+    prefs = {
+        r["automation_id"]: r["enabled"]
+        for r in query(con, "SELECT automation_id, enabled FROM automation_prefs WHERE user_id = ?", [user_id])
+    }
+    return [
+        {
+            "id": a["id"],
+            "label": a["label"],
+            "schedule": a["schedule"],
+            "cron": a["cron"],
+            "enabled": prefs.get(a["id"], a["default_enabled"]),
+        }
+        for a in AUTOMATIONS
+    ]
 
 
 class WhatsAppBody(BaseModel):
@@ -74,9 +107,37 @@ def notify_covenant(
 
 
 @router.get("/automations")
-def list_automations(user: dict = Depends(require_roles("pe_board", "cfo"))):
-    """Catálogo de automations/crons de WhatsApp (para el panel del frontend)."""
-    return {"automations": AUTOMATIONS}
+def list_automations(user: dict = Depends(get_current_user)):
+    """Crons de WhatsApp del usuario (catálogo + estado persistido)."""
+    con = get_connection()
+    autos = _automations_for(con, user["id"])
+    con.close()
+    return {"automations": autos}
+
+
+class AutomationToggle(BaseModel):
+    id: str
+    enabled: bool
+
+
+@router.post("/automations")
+def set_automation(body: AutomationToggle, user: dict = Depends(get_current_user)):
+    """Activa/desactiva un cron para el usuario (persistido en DB)."""
+    if body.id not in AUTOMATION_IDS:
+        raise HTTPException(404, detail=err("UNKNOWN_AUTOMATION", f"No automation '{body.id}'."))
+    con = get_connection()
+    _ensure_prefs(con)
+    execute(
+        con,
+        "INSERT INTO automation_prefs (user_id, automation_id, enabled, updated_at) "
+        "VALUES (?, ?, ?, current_timestamp) "
+        "ON CONFLICT (user_id, automation_id) DO UPDATE SET "
+        "enabled = EXCLUDED.enabled, updated_at = current_timestamp",
+        [user["id"], body.id, body.enabled],
+    )
+    autos = _automations_for(con, user["id"])
+    con.close()
+    return {"automations": autos}
 
 
 @router.post("/ask")

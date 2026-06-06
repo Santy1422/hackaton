@@ -4,8 +4,9 @@ Mide, sobre datos reales en Postgres:
   1. Cobertura      — toda semana del forecast tiene su fila de clima
   2. Fechas         — week_start coincide entre forecast_13w y weather_forecast
   3. iso_week join  — el iso_week del clima == iso_week del forecast
-  4. Propagación    — el delay del clima realmente fluye al cashflow (d5)
-  5. Consistencia   — m5_delay_weeks ≈ delay_days/7
+  4. Propagación    — el impacto € calibrado mueve d5 en escenarios con clima
+                      activo (base/wet) y NO en dry_qtr (weather inactivo)
+  5. Consistencia   — m5_delay_weeks (schedule físico) ≈ delay_days/7
 
 Imprime un score /100. No inventa: todo se calcula de la base.
 Se salta si el forecast aún no fue computado (`python run.py model`).
@@ -56,19 +57,22 @@ def run() -> float:
     # 3. join iso_week (cada forecast week mapea a exactamente una fila clima)
     iso_join = len(covered) / len(fc_weeks)
 
-    # 4. propagación: semanas con delay>0 deben tener d5 != 0 en escenarios con clima
+    # 4. propagación financiera (modelo de 2 señales): el impacto € calibrado
+    #    mueve d5 en escenarios con clima activo y NO en dry_qtr (inactivo).
     delayed_isos = [iso for iso, r in wf.items() if (r["delay_days"] or 0) > 0]
-    if delayed_isos:
-        rows = query(
+    d5_by_scen = {
+        r["scenario"]: float(r["imp"] or 0)
+        for r in query(
             con,
-            "SELECT iso_week, SUM(ABS(d5_weather_impact)) imp FROM forecast_13w "
-            "WHERE scenario IN ('base','wet_qtr') AND iso_week IN "
-            f"({','.join(str(i) for i in delayed_isos)}) GROUP BY iso_week",
+            "SELECT scenario, SUM(ABS(d5_weather_impact)) imp FROM forecast_13w GROUP BY scenario",
         )
-        flowed = sum(1 for r in rows if (r["imp"] or 0) > 0)
-        propagation = flowed / len(delayed_isos)
-    else:
-        propagation = 1.0
+    }
+    checks = [
+        d5_by_scen.get("base", 0) > 0,       # clima activo → mueve cashflow
+        d5_by_scen.get("wet_qtr", 0) > 0,    # clima activo → mueve cashflow
+        d5_by_scen.get("dry_qtr", 0) == 0,   # clima inactivo → sin impacto
+    ]
+    propagation = sum(checks) / len(checks)
 
     # 5. consistencia delay_weeks vs delay_days
     cons = query(
@@ -91,7 +95,7 @@ def run() -> float:
         "1. Cobertura forecast↔clima": coverage,
         "2. week_start coincide": date_match,
         "3. join por iso_week": iso_join,
-        "4. delay propaga a cashflow (d5)": propagation,
+        "4. € calibrado mueve d5 (activo/dry)": propagation,
         "5. m5_delay_weeks ≈ delay_days/7": consistency,
     }
     score = round(100 * sum(metrics.values()) / len(metrics), 1)

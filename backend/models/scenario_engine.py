@@ -104,6 +104,24 @@ def run_all_scenarios(db_conn) -> int:
         if not wdf.empty else {}
     )
 
+    # calibración empírica clima↔billing: el impacto FINANCIERO (€) usa sólo los
+    # drivers significativos sobre la anomalía vs la normal de cada iso_week.
+    try:
+        from models.weather_calibration import financial_impact_eur, load_or_calibrate, persist
+
+        calib = load_or_calibrate(con)
+        persist(con, calib)
+    except Exception:
+        calib = None
+    # impacto € portfolio por iso_week (idéntico para todos los opcos/escenarios activos)
+    weather_eur = {
+        iso: (financial_impact_eur(weather.get(iso, {}), iso, calib)["impact_eur"] if calib else 0.0)
+        for _fw, iso, _ws in weeks
+    }
+    # peso de cada opco = share del billing base → reparte el € portfolio por opco
+    total_base = sum(base_weekly.values()) or 1.0
+    opco_share = {o: base_weekly.get(o, 0.0) / total_base for o in OPCOS}
+
     # persistir seasonal_index + weather_forecast
     execute(con, "DELETE FROM seasonal_index")
     for iso, idx in seasonal.items():
@@ -166,20 +184,18 @@ def run_all_scenarios(db_conn) -> int:
             lag = max(1, round(dso / 7 * params["dso_mult"]))
             collection = [billing_at(fw - lag) for fw, _, _ in weeks]
 
-            # M5 clima: difiere fracción del cobro a la semana siguiente
+            # M5 clima: impacto FINANCIERO calibrado (€) repartido por share del opco.
+            # `delays` guarda la señal de SCHEDULE física (días→semanas) para el audit.
             d5 = [0.0] * HORIZON
             delays = []
             for i, (fw, iso, _) in enumerate(weeks):
                 w = weather.get(iso, {})
-                delay = compute_delay_weeks(
+                delays.append(compute_delay_weeks(
                     float(w.get("rain_mm", 0)), int(w.get("frost_days", 0)),
                     float(w.get("wind_bft", 0)),
-                )
-                delays.append(delay)
-                if params["weather_active"] and delay > 0 and i + 1 < HORIZON:
-                    shift = collection[i] * min(delay, 1.0) * 0.5
-                    d5[i] -= shift
-                    d5[i + 1] += shift
+                ))
+                if params["weather_active"]:
+                    d5[i] = weather_eur.get(iso, 0.0) * opco_share[opco]
 
             cum = 0.0
             for i, (fw, iso, ws) in enumerate(weeks):
