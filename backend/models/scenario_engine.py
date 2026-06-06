@@ -94,10 +94,12 @@ def run_all_scenarios(db_conn) -> int:
         m = rec[(rec["opco"] == opco) & (rec["rev"] > 0)]["rev"].mean()
         base_weekly[opco] = 0.0 if pd.isna(m) else float(m)
 
-    # clima (una sola vez), alineado por POSICIÓN a las 13 semanas del horizonte
-    wdf = fetch_weather_forecast(weeks=HORIZON)
-    wrows = wdf.to_dict("records") if not wdf.empty else []
-    weather = {weeks[i][0]: wrows[i] for i in range(min(len(wrows), HORIZON))}
+    # clima NL real (Open-Meteo forecast + climatología), matcheado por iso_week
+    wdf = fetch_weather_forecast(start=start, weeks=HORIZON)
+    weather = (
+        {int(r["iso_week"]): r for r in wdf.to_dict("records")}
+        if not wdf.empty else {}
+    )
 
     # persistir seasonal_index + weather_forecast
     con.execute("DELETE FROM seasonal_index")
@@ -109,7 +111,7 @@ def run_all_scenarios(db_conn) -> int:
         )
     con.execute("DELETE FROM weather_forecast")
     for fw, iso, ws in weeks:
-        w = weather.get(fw, {})
+        w = weather.get(iso, {})
         delay = compute_delay_weeks(
             float(w.get("rain_mm", 0)), int(w.get("frost_days", 0)), float(w.get("wind_bft", 0))
         )
@@ -163,7 +165,7 @@ def run_all_scenarios(db_conn) -> int:
             d5 = [0.0] * HORIZON
             delays = []
             for i, (fw, iso, _) in enumerate(weeks):
-                w = weather.get(fw, {})
+                w = weather.get(iso, {})
                 delay = compute_delay_weeks(
                     float(w.get("rain_mm", 0)), int(w.get("frost_days", 0)),
                     float(w.get("wind_bft", 0)),
