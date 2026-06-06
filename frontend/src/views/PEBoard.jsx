@@ -15,6 +15,7 @@ import ChartTooltip from '../components/ChartTooltip'
 import { Card, ChartSkeleton, StatusPill } from '../components/ui'
 import { IconShield, IconTrending, IconAlert } from '../components/icons'
 import CovenantGauge from '../components/CovenantGauge'
+import SavingsPanel from '../components/SavingsPanel'
 
 export default function PEBoard() {
   const base = useCovenant('base')
@@ -130,6 +131,8 @@ export default function PEBoard() {
           </ResponsiveContainer>
         )}
       </Card>
+
+      <SavingsPanel />
     </div>
   )
 }
