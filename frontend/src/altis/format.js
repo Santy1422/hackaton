@@ -1,7 +1,6 @@
-/* Altis Forecast — shared formatting, constants and data normalization.
-   The design's "single source of truth" idiom, wired to the real backend. */
-
-export const COVENANT_THRESHOLD = -500000
+/* Altis Forecast — shared formatting + data normalization.
+   Cero hardcode de negocio: umbral, status y headroom vienen del backend
+   (/covenant). Aquí sólo formato, etiquetas de UI y merge forecast↔weather. */
 
 // ---- money ----------------------------------------------------------------
 export const eur = (n) =>
@@ -64,9 +63,7 @@ export const SCENARIO_KEYS = ['base', 'wet_qtr', 'dry_qtr']
 
 // ---- opcos ----------------------------------------------------------------
 // La data del challenge está anonimizada: el id (Opco_A..D) ES la identidad.
-// La lista viva llega de /api/opcos (useOpcos); esto es sólo un fallback de ids
-// si la API no responde. Sin nombres/ciudades inventados.
-export const OPCO_FALLBACK = ['Opco_A', 'Opco_B', 'Opco_C', 'Opco_D']
+// La lista viva llega de /api/opcos (useOpcos) — sin nombres/ciudades inventados.
 export const sharePct = (share) => (share != null ? `${Math.round(share * 100)}% of revenue` : '')
 
 // ---- weather --------------------------------------------------------------
@@ -79,15 +76,8 @@ export function workableDays(rain_mm) {
   return Math.round(Math.max(1, Math.min(5, 5 - r / 12)) * 10) / 10
 }
 
-export function riskFromRain(rain_mm, wind_bft) {
-  const r = Number(rain_mm) || 0
-  const w = Number(wind_bft) || 0
-  if (r > 30 || w >= 7) return 'high'
-  if (r > 12 || w >= 6) return 'medium'
-  return 'low'
-}
-
-/** Normalize the /weather payload into design-shaped week cells. */
+/** Normalize the /weather payload into design-shaped week cells.
+ *  rain/risk vienen del backend; workable_days se deriva (el backend no lo da). */
 export function normalizeWeather(weatherWeeks = []) {
   return weatherWeeks.map((w, i) => ({
     week: w.forecast_week || i + 1,
@@ -95,7 +85,7 @@ export function normalizeWeather(weatherWeeks = []) {
     week_start: w.week_start,
     rain_mm: Math.round(Number(w.rain_mm) || 0),
     wind_bft: w.wind_bft,
-    weather_risk: w.risk_level || riskFromRain(w.rain_mm, w.wind_bft),
+    weather_risk: w.risk_level,
     workable_days: w.workable_days ?? workableDays(w.rain_mm),
   }))
 }
@@ -111,32 +101,13 @@ export function mergeWeeks(forecastWeeks = [], weatherWeeks = []) {
     return {
       ...f,
       week: f.forecast_week ?? i + 1,
-      headroom: Number(f.cumulative_cf || 0) - COVENANT_THRESHOLD,
-      rain_mm: w.rain_mm ?? 0,
+      rain_mm: w.rain_mm,
       wind_bft: w.wind_bft,
-      weather_risk: w.weather_risk || 'low',
-      workable_days: w.workable_days ?? 5,
+      weather_risk: w.weather_risk,
+      workable_days: w.workable_days,
       iso_week: w.iso_week,
     }
   })
-}
-
-/** Covenant status from the lowest cumulative point. */
-export function statusFromWeeks(weeks = []) {
-  if (!weeks.length) return { status: 'SAFE', minCum: 0, minWeek: 0, finalHeadroom: 0 }
-  let minCum = Infinity
-  let minWeek = 0
-  weeks.forEach((w) => {
-    const c = Number(w.cumulative_cf || 0)
-    if (c < minCum) {
-      minCum = c
-      minWeek = w.week
-    }
-  })
-  const finalHeadroom = Math.round(minCum - COVENANT_THRESHOLD)
-  const status =
-    minCum < COVENANT_THRESHOLD ? 'BREACH' : minCum < COVENANT_THRESHOLD + 200000 ? 'WATCH' : 'SAFE'
-  return { status, minCum: Math.round(minCum), minWeek, finalHeadroom }
 }
 
 export const sumKey = (weeks, k) => weeks.reduce((s, w) => s + Number(w[k] || 0), 0)

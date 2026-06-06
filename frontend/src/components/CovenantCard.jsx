@@ -1,8 +1,12 @@
 import { eurK, COLORS } from '../altis/format'
 
-/** Semi-circular covenant headroom gauge (SVG), rendered straight to JSX. */
-function CovenantArc({ headroom, status, size = 180, max = 1500000 }) {
-  const pct = Math.max(0, Math.min(1, (headroom + 500000) / (max + 500000)))
+/** Semi-circular covenant headroom gauge (SVG). Threshold viene del backend;
+ *  la escala del arco se deriva del piso real (no hay números mágicos). */
+function CovenantArc({ headroom, status, threshold, size = 180 }) {
+  // headroom = cumulative − threshold; el arco va del piso (0%) a 3× su magnitud.
+  const max = Math.abs(threshold || 0) * 3
+  const span = max - threshold || 1
+  const pct = Math.max(0, Math.min(1, (headroom - threshold) / span))
   const r = size / 2 - 10
   const cx = size / 2
   const cy = size / 2
@@ -21,14 +25,14 @@ function CovenantArc({ headroom, status, size = 180, max = 1500000 }) {
   )
 }
 
-export default function CovenantCard({ headroom, status, big }) {
+export default function CovenantCard({ headroom, status, threshold, big }) {
   const s = (status || 'SAFE').toLowerCase()
   return (
     <div className={'cov ' + s}>
-      <CovenantArc headroom={headroom} status={status} size={big ? 220 : 180} />
+      <CovenantArc headroom={headroom} status={status} threshold={threshold} size={big ? 220 : 180} />
       <div className="cov-v">
         {eurK(headroom)}
-        <span>headroom above −€500k floor</span>
+        <span>headroom above {eurK(threshold)} floor</span>
       </div>
       <div className={'cov-badge ' + s}>{status}</div>
     </div>

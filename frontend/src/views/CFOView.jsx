@@ -11,7 +11,8 @@ import {
   YAxis,
 } from 'recharts'
 import { useScenarioWeeks } from '../altis/hooks'
-import { COLORS, COVENANT_THRESHOLD, eur, eurK, signed, sumKey } from '../altis/format'
+import { useCovenant } from '../hooks/useForecast'
+import { COLORS, eur, eurK, signed, sumKey } from '../altis/format'
 import { Panel, StatBox, DriverChips, Skeleton, Empty, ChartTip } from '../components/primitives'
 import SkyBand from '../components/SkyBand'
 import AuditModal from '../components/AuditModal'
@@ -20,7 +21,10 @@ const fmtK = (v) => `${(Number(v) / 1000).toFixed(0)}k`
 
 export default function CFOView({ scenario }) {
   const [week, setWeek] = useState(null)
-  const { weeks, status, loading, error } = useScenarioWeeks(scenario)
+  const { weeks, loading, error } = useScenarioWeeks(scenario)
+  const cov = useCovenant(scenario)
+  const cs = cov.data?.summary
+  const threshold = cov.data?.covenant_threshold
 
   if (error) return <Empty tone="error" title="Could not load forecast" hint={error} />
   if (!loading && !weeks.length) return <Empty title="No forecast computed" hint="Run the scenario engine." />
@@ -47,8 +51,8 @@ export default function CFOView({ scenario }) {
           <div className="hero-big">{loading ? '—' : eur(last.cumulative_cf)}</div>
           <div className="hero-meta">
             Net <b className={totalNet >= 0 ? 'pos' : 'neg'}>{signed(totalNet)}</b> over 13 weeks ·
-            covenant floor −€500k held with{' '}
-            <b className="copper">{eurK(status.finalHeadroom)}</b> worst-case headroom
+            covenant floor {threshold != null ? eurK(threshold) : '—'} held with{' '}
+            <b className="copper">{cs ? eurK(cs.final_headroom) : '—'}</b> worst-case headroom
           </div>
         </div>
         <StatBox
@@ -57,8 +61,8 @@ export default function CFOView({ scenario }) {
             { label: 'Weather-hit weeks', value: weatherWeeks, sub: 'of 13 below par' },
             {
               label: 'Covenant status',
-              value: status.status,
-              tone: status.status === 'SAFE' ? 'ok' : status.status === 'WATCH' ? 'warn' : 'danger',
+              value: cs?.status ?? '—',
+              tone: cs?.status === 'SAFE' ? 'ok' : cs?.status === 'WATCH' ? 'warn' : cs?.status === 'BREACH' ? 'danger' : '',
               sub: 'worst case across horizon',
             },
           ]}
@@ -79,8 +83,10 @@ export default function CFOView({ scenario }) {
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
               <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
               <Tooltip content={<ChartTip />} cursor={{ fill: 'rgba(28,37,48,.05)' }} />
-              <ReferenceLine y={COVENANT_THRESHOLD} stroke={COLORS.copper} strokeDasharray="5 4"
-                strokeWidth={1.4} ifOverflow="extendDomain" />
+              {threshold != null && (
+                <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4"
+                  strokeWidth={1.4} ifOverflow="extendDomain" />
+              )}
               <Bar dataKey="inflow" name="Collections in" fill={COLORS.green} radius={[3, 3, 0, 0]}
                 onClick={(d) => setWeek(d.forecast_week)} cursor="pointer" />
               <Bar dataKey="outflow" name="Materials + subcontractors" fill={COLORS.copper} radius={[0, 0, 3, 3]}

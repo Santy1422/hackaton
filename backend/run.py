@@ -4,6 +4,7 @@ Usage:
   python run.py ingest    # parse xlsx files → Postgres (transactions)
   python run.py model     # run all 5 models → forecast_13w
   python run.py seed      # seed the 4 role-based users
+  python run.py calibrate # fit + persist weather↔billing calibration
   python run.py serve     # start FastAPI on port 8000
   python run.py all       # ingest + model + serve
 """
@@ -22,6 +23,17 @@ if __name__ == "__main__":
 
         users = seed_users()
         print(f"✅ Seeded {len(users)} users")
+
+    if cmd == "calibrate":
+        from db.database import get_connection
+        from models.weather_calibration import calibrate, persist
+
+        con = get_connection()
+        c = calibrate(con, force=True)
+        persist(con, c)
+        con.close()
+        print(f"✅ Calibrated weather↔billing: R²={c['multivariate_r2']} "
+              f"over {c['n_weeks']} weeks, significant={c['significant_drivers']}")
 
     if cmd in ("ingest", "all"):
         from ingestion.reconcile import reconcile_all

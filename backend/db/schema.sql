@@ -102,6 +102,16 @@ CREATE TABLE IF NOT EXISTS users (
     created_at       TIMESTAMP DEFAULT current_timestamp
 );
 
+-- Weather→billing calibration (empirical, audit-able). Latest row = current.
+CREATE TABLE IF NOT EXISTS weather_calibration (
+    id               SERIAL PRIMARY KEY,
+    computed_at      TIMESTAMP DEFAULT current_timestamp,
+    n_weeks          INTEGER,
+    period           VARCHAR,
+    multivariate_r2  DECIMAL(8,4),
+    payload          TEXT             -- full calibration JSON (coeffs, normals, verdict)
+);
+
 -- Reconciliation log (every ingestion transformation)
 CREATE TABLE IF NOT EXISTS reconciliation_log (
     id               INTEGER PRIMARY KEY,

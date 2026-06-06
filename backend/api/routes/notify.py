@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from db.database import get_connection, query
-from integrations.zavu import send_whatsapp
+from integrations.zavu import send_whatsapp, verify_signature
+from models.assistant import answer_question
 
 from ..auth import require_roles
 from ..validation import validate_scenario
 from .reports import SCEN_LABEL, _eur, _scenario_stats
 
 router = APIRouter(tags=["notify"])
+
+# Cadencia de los crons (la consume el frontend de automations).
+AUTOMATIONS = [
+    {"id": "weekly_digest", "label": "Weekly forecast digest", "schedule": "Mondays · 08:00", "cron": "0 8 * * 1"},
+    {"id": "covenant_alert", "label": "Covenant alert", "schedule": "when status → WATCH / BREACH", "cron": "0 * * * *"},
+    {"id": "monthly_report", "label": "Monthly report (PDF)", "schedule": "1st of month · 08:00", "cron": "0 8 1 * *"},
+]
 
 
 class WhatsAppBody(BaseModel):
@@ -22,6 +30,11 @@ class WhatsAppBody(BaseModel):
 
 class AlertBody(BaseModel):
     to: str
+
+
+class AskBody(BaseModel):
+    question: str
+    to: str | None = None  # si viene, además responde por WhatsApp
 
 
 @router.post("/whatsapp")
@@ -58,3 +71,52 @@ def notify_covenant(
     )
     result = send_whatsapp(body.to, text)
     return {"scenario": scenario, "message": text, "result": result}
+
+
+@router.get("/automations")
+def list_automations(user: dict = Depends(require_roles("pe_board", "cfo"))):
+    """Catálogo de automations/crons de WhatsApp (para el panel del frontend)."""
+    return {"automations": AUTOMATIONS}
+
+
+@router.post("/ask")
+def ask(body: AskBody, user: dict = Depends(require_roles("pe_board", "cfo"))):
+    """Pregunta sobre el forecast respondida por Claude (opcionalmente por WhatsApp)."""
+    text = answer_question(body.question)
+    out = {"question": body.question, "answer": text}
+    if body.to:
+        out["result"] = send_whatsapp(body.to, text)
+    return out
+
+
+@router.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request):
+    """Webhook de Zavu: mensaje entrante → Claude responde → reply por WhatsApp.
+
+    Verifica `x-zavu-signature` (si hay ZAVU_WEBHOOK_SECRET). Solo procesa
+    `message.inbound` de WhatsApp tipo texto; el resto se ignora con 200.
+    Payload Zavu: { type, senderId, data: { from, text, channel, messageId } }.
+    """
+    raw = await request.body()
+    if not verify_signature(raw, request.headers.get("x-zavu-signature")):
+        return {"ok": False, "reason": "invalid signature"}
+
+    import json
+
+    try:
+        payload = json.loads(raw or b"{}")
+    except Exception:
+        return {"ok": False, "reason": "invalid json"}
+
+    if payload.get("type") not in (None, "message.inbound"):
+        return {"ok": True, "ignored": payload.get("type")}
+
+    data = payload.get("data", payload)
+    text = data.get("text") or ""
+    frm = data.get("from")
+    if data.get("messageType", "text") != "text" or not text or not frm:
+        return {"ok": True, "ignored": "non-text or missing from/text"}
+
+    answer = answer_question(text)
+    result = send_whatsapp(frm, answer)
+    return {"ok": True, "from": frm, "answer": answer, "result": result}

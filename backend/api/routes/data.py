@@ -61,6 +61,9 @@ def get_wip(
 
 
 # 7. GET /weather  — cualquier usuario autenticado (no es opco-específico)
+#    Cada semana trae DOS señales separadas y calibradas:
+#      schedule  → días de obra perdidos (límite físico de techado) — Project Lead
+#      financial → € de desviación del cashflow por anomalía (calibrado de datos)
 @router.get("/weather")
 def get_weather(
     weeks: int = 13,
@@ -68,39 +71,116 @@ def get_weather(
     lon: float = 4.89,
     user: dict = Depends(get_current_user),
 ):
+    from models.weather_calibration import (
+        financial_impact_eur,
+        load_or_calibrate,
+        schedule_signal,
+    )
+
     con = get_connection()
     rows = query(con, "SELECT * FROM weather_forecast ORDER BY iso_week LIMIT ?", [weeks])
-    con.close()
-    if rows:
-        return {"source": "weather_forecast", "location": {"lat": lat, "lon": lon}, "weeks": rows}
-    # vacío → fetch en vivo (import diferido para no exigir pandas/httpx al importar la app)
-    try:
-        from models.m5_weather import compute_delay_weeks, fetch_weather_forecast
+    source = "weather_forecast"
 
-        df = fetch_weather_forecast(lat=lat, lon=lon, weeks=weeks)
-        out = []
-        for i, r in enumerate(df.to_dict("records"), start=1):
-            delay_w = compute_delay_weeks(
-                float(r.get("rain_mm", 0)), int(r.get("frost_days", 0)), float(r.get("wind_bft", 0))
-            )
-            risk = "high" if delay_w > 0.25 else "medium" if delay_w > 0 else "low"
-            out.append(
+    # fallback: tabla vacía → fetch en vivo de Open-Meteo
+    if not rows:
+        try:
+            from models.m5_weather import fetch_weather_forecast
+
+            df = fetch_weather_forecast(lat=lat, lon=lon, weeks=weeks)
+            rows = [
                 {
-                    "forecast_week": i,
                     "iso_week": int(r.get("iso_week", i)),
+                    "week_start": r.get("week_start"),
                     "temp_avg": round(float(r.get("temp_avg", 0)), 1),
                     "rain_mm": round(float(r.get("rain_mm", 0)), 1),
                     "frost_days": int(r.get("frost_days", 0)),
                     "wind_bft": round(float(r.get("wind_bft", 0)), 1),
-                    "risk_level": risk,
-                    "delay_weeks": round(delay_w, 2),
+                    "source": r.get("source", "open-meteo"),
                 }
+                for i, r in enumerate(df.to_dict("records"), start=1)
+            ]
+            source = "open-meteo"
+        except Exception as e:
+            con.close()
+            raise HTTPException(
+                503, detail=err("WEATHER_API_UNAVAILABLE", f"Open-Meteo unreachable: {e}")
             )
-        return {"source": "open-meteo", "location": {"lat": lat, "lon": lon}, "weeks": out}
-    except Exception as e:
-        raise HTTPException(
-            503, detail=err("WEATHER_API_UNAVAILABLE", f"Open-Meteo unreachable: {e}")
+
+    try:
+        calib = load_or_calibrate(con, lat, lon)
+    except Exception:
+        calib = None
+    con.close()
+
+    out = []
+    for i, r in enumerate(rows, start=1):
+        rain = float(r.get("rain_mm") or 0)
+        frost = int(r.get("frost_days") or 0)
+        wind = float(r.get("wind_bft") or 0)
+        iso = int(r.get("iso_week") or i)
+        sched = schedule_signal(rain, frost, wind)
+        fin = financial_impact_eur(r, iso, calib) if calib else None
+        out.append(
+            {
+                "forecast_week": i,
+                "iso_week": iso,
+                "week_start": r.get("week_start"),
+                "temp_avg": round(float(r.get("temp_avg") or 0), 1),
+                "rain_mm": round(rain, 1),
+                "frost_days": frost,
+                "wind_bft": round(wind, 1),
+                "source": r.get("source"),
+                "risk_level": sched["risk_level"],          # = schedule risk (físico)
+                "schedule": sched,                          # Project Lead
+                "financial": fin,                           # CFO / forecast (calibrado)
+            }
         )
+
+    return {
+        "source": source,
+        "location": {"lat": lat, "lon": lon},
+        "weeks": out,
+        "calibration": _calib_summary(calib) if calib else None,
+    }
+
+
+def _calib_summary(calib: dict) -> dict:
+    """Resumen liviano de la calibración para mostrar inline en el dashboard."""
+    return {
+        "method": calib["method"],
+        "period": calib["period"],
+        "n_weeks": calib["n_weeks"],
+        "multivariate_r2": calib["multivariate_r2"],
+        "financial_confidence": calib["financial_confidence"],
+        "significant_drivers": calib["significant_drivers"],
+        "verdict": calib["verdict"],
+    }
+
+
+# 7b. GET /weather/calibration  — evidencia empírica clima↔billing (audit)
+@router.get("/weather/calibration")
+def get_weather_calibration(
+    refresh: bool = False,
+    lat: float = 52.37,
+    lon: float = 4.89,
+    user: dict = Depends(get_current_user),
+):
+    from models.weather_calibration import calibrate, load_or_calibrate, persist
+
+    con = get_connection()
+    try:
+        if refresh:
+            calib = calibrate(con, lat, lon, force=True)
+            persist(con, calib)
+        else:
+            calib = load_or_calibrate(con, lat, lon)
+    except Exception as e:
+        con.close()
+        raise HTTPException(
+            503, detail=err("CALIBRATION_UNAVAILABLE", f"Could not calibrate: {e}")
+        )
+    con.close()
+    return calib
 
 
 # 8. GET /milestones/{opco}  — project_lead/opco_md (su opco) + pe_board / cfo
@@ -342,6 +422,15 @@ def recompute(
         warnings.append("models: scenario_engine not implemented yet")
     except Exception as e:
         warnings.append(f"models: {e}")
+    # refrescar la calibración empírica clima↔billing (best-effort)
+    try:
+        from models.weather_calibration import calibrate, persist
+
+        c = get_connection()
+        persist(c, calibrate(c, force=True))
+        c.close()
+    except Exception as e:
+        warnings.append(f"calibration: {e}")
     return {
         "status": "ok" if not warnings else "partial",
         "duration_seconds": round(time.perf_counter() - start, 2),

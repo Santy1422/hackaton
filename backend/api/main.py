@@ -1,5 +1,7 @@
 """FastAPI app — Altis Groep Forecast API."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,7 +18,19 @@ from .routes import (
     savings,
 )
 
-app = FastAPI(title="Altis Groep Forecast API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Crons de WhatsApp (solo si ENABLE_SCHEDULER=1).
+    try:
+        from scheduler import start_scheduler
+
+        start_scheduler()
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(title="Altis Groep Forecast API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

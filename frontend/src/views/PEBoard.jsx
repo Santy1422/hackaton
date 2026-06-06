@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import { useCovenant, useApi, useStats } from '../hooks/useForecast'
 import { useOpcos } from '../altis/hooks'
-import { COLORS, COVENANT_THRESHOLD, eurK, sharePct } from '../altis/format'
+import { COLORS, eurK, sharePct } from '../altis/format'
 import { Panel, StatBox, Skeleton, ChartTip } from '../components/primitives'
 import CovenantCard from '../components/CovenantCard'
 import SavingsPanel from '../components/SavingsPanel'
@@ -28,7 +28,7 @@ export default function PEBoard() {
     : 'reconciled into one schema'
 
   const all = base.data?.all_scenarios
-  const threshold = base.data?.covenant_threshold || COVENANT_THRESHOLD
+  const threshold = base.data?.covenant_threshold
   const worst = all
     ? Math.min(all.base?.final_headroom ?? 0, all.wet_qtr?.final_headroom ?? 0, all.dry_qtr?.final_headroom ?? 0)
     : null
@@ -40,9 +40,18 @@ export default function PEBoard() {
     dry_qtr: Number(dry.data?.weeks?.[i]?.cumulative_cf || 0),
   }))
 
+  // Años de revenue derivados de /stats (no hardcodeados): toma los dos más recientes.
   const rev = stats?.revenue || {}
+  const revYears = Object.keys(rev)
+    .map((k) => Number(k.replace('total_', '')))
+    .filter(Boolean)
+    .sort((a, b) => a - b)
+  const yLatest = revYears[revYears.length - 1]
+  const yPrior = revYears[revYears.length - 2]
+  const revLatest = yLatest != null ? rev[`total_${yLatest}`] : null
+  const revPrior = yPrior != null ? rev[`total_${yPrior}`] : null
   const delta =
-    rev.total_2024 ? `+${(((rev.total_2025 - rev.total_2024) / rev.total_2024) * 100).toFixed(1)}% vs 2024` : ''
+    revPrior ? `${revLatest >= revPrior ? '+' : ''}${(((revLatest - revPrior) / revPrior) * 100).toFixed(1)}% vs ${yPrior}` : ''
 
   return (
     <div className="view anim">
@@ -58,7 +67,7 @@ export default function PEBoard() {
         </div>
         <StatBox
           rows={[
-            { label: 'Portfolio revenue 2025', value: eurK(rev.total_2025), sub: delta },
+            { label: `Portfolio revenue ${yLatest ?? ''}`, value: revLatest != null ? eurK(revLatest) : '—', sub: delta },
             { label: 'Reconciled transactions', value: stats?.transactions?.total_rows?.toLocaleString() || '—', sub: systemsLabel },
             { label: 'GL accounts mapped', value: stats?.transactions?.gl_accounts_mapped ?? '—', sub: 'controller-reviewed' },
           ]}
@@ -73,13 +82,13 @@ export default function PEBoard() {
               ['Dry quarter', 'dry_qtr'],
             ].map(([label, id]) => (
               <Panel key={id} title={label}>
-                <CovenantCard headroom={all[id]?.final_headroom || 0} status={all[id]?.status} />
+                <CovenantCard headroom={all[id]?.final_headroom || 0} status={all[id]?.status} threshold={threshold} />
               </Panel>
             ))
           : Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={210} />)}
       </div>
 
-      <Panel title="Cumulative cash · 13 weeks · three scenarios" hint="covenant floor −€500k">
+      <Panel title="Cumulative cash · 13 weeks · three scenarios" hint={`covenant floor ${eurK(threshold)}`}>
         {base.loading ? (
           <Skeleton height={300} />
         ) : (
@@ -89,7 +98,9 @@ export default function PEBoard() {
               <XAxis dataKey="week" tickLine={false} axisLine={false} />
               <YAxis tickFormatter={fmtK} tickLine={false} axisLine={false} width={46} />
               <Tooltip content={<ChartTip />} cursor={{ stroke: '#cbd5e1', strokeDasharray: '4 4' }} />
-              <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4" strokeWidth={1.4} />
+              {threshold != null && (
+                <ReferenceLine y={threshold} stroke={COLORS.copper} strokeDasharray="5 4" strokeWidth={1.4} />
+              )}
               <Line dataKey="base" name="Base" stroke={COLORS.ink} strokeWidth={2.4} dot={false} />
               <Line dataKey="wet_qtr" name="Wet quarter" stroke={COLORS.rain} strokeWidth={2.2} dot={false} />
               <Line dataKey="dry_qtr" name="Dry quarter" stroke={COLORS.green} strokeWidth={2.2} dot={false} />

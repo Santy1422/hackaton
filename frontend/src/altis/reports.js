@@ -11,12 +11,10 @@ import {
   DRIVER_COLORS,
   SCENARIOS,
   SCENARIO_KEYS,
-  COVENANT_THRESHOLD,
   eur,
   eurK,
   signed,
   mergeWeeks,
-  statusFromWeeks,
   sumKey,
 } from './format'
 
@@ -91,6 +89,8 @@ function buildReport(kind, scenario, packs, narrative = {}, meta = {}) {
   const lowWeek = W.reduce((m, w) => (w.cumulative_cf < m.cumulative_cf ? w : m), W[0] || {})
   const status = cur.status
   const finalHeadroom = cur.finalHeadroom
+  const threshold = cur.threshold
+  const floor = eurK(threshold)
   const statusClass = status.toLowerCase()
   const first = W[0]?.week_start
   const last = w13.week_start
@@ -123,7 +123,7 @@ function buildReport(kind, scenario, packs, narrative = {}, meta = {}) {
     <div class="kpis">
       <div class="kpi"><div class="l">Ending cash · W13</div><div class="v">${eurK(w13.cumulative_cf)}</div><div class="s">cumulative 13-week</div></div>
       <div class="kpi g"><div class="l">Net · 13 weeks</div><div class="v ${totalNet >= 0 ? 'pos' : 'neg'}">${eurK(totalNet)}</div><div class="s">all drivers</div></div>
-      <div class="kpi ${statusClass === 'safe' ? 'g' : statusClass === 'watch' ? 'a' : 'c'}"><div class="l">Covenant headroom</div><div class="v">${eurK(finalHeadroom)}</div><div class="s">worst case vs −€500k</div></div>
+      <div class="kpi ${statusClass === 'safe' ? 'g' : statusClass === 'watch' ? 'a' : 'c'}"><div class="l">Covenant headroom</div><div class="v">${eurK(finalHeadroom)}</div><div class="s">worst case vs ${floor}</div></div>
       <div class="kpi ${statusClass === 'safe' ? 'g' : statusClass === 'watch' ? 'a' : 'c'}"><div class="l">Status</div><div class="v">${status}</div><div class="s">low in week ${lowWeek.week}</div></div>
     </div>
   </div>`
@@ -132,7 +132,7 @@ function buildReport(kind, scenario, packs, narrative = {}, meta = {}) {
     <h2>Covenant headroom <span class="h2x">DEFENSIBLE TO THE BANK</span></h2>
     <div class="cov">
       <div class="badge ${statusClass}">${status}</div>
-      <div class="txt">The covenant requires cumulative cash to stay above <b>−€500,000</b> at all times across the 13-week horizon. The forecast low of <b>${eur(lowWeek.cumulative_cf)}</b> in <b>week ${lowWeek.week}</b> leaves <b class="${finalHeadroom < 0 ? 'neg' : 'pos'}">${eur(finalHeadroom)}</b> of headroom. ${status === 'BREACH' ? 'This <b>breaches</b> the covenant — the board should expect a waiver conversation or a draw on the revolver to bridge the trough.' : status === 'WATCH' ? 'This is <b>within €200k of the floor</b> — flagged for monitoring; a single slipped milestone or a wet fortnight would tip it.' : 'This sits <b>comfortably clear</b> of the floor under current assumptions.'}</div>
+      <div class="txt">The covenant requires cumulative cash to stay above <b>${eur(threshold)}</b> at all times across the 13-week horizon. The forecast low of <b>${eur(lowWeek.cumulative_cf)}</b> in <b>week ${lowWeek.week}</b> leaves <b class="${finalHeadroom < 0 ? 'neg' : 'pos'}">${eur(finalHeadroom)}</b> of headroom. ${status === 'BREACH' ? 'This <b>breaches</b> the covenant — the board should expect a waiver conversation or a draw on the revolver to bridge the trough.' : status === 'WATCH' ? 'This is <b>close to the floor</b> — flagged for monitoring; a single slipped milestone or a wet fortnight would tip it.' : 'This sits <b>comfortably clear</b> of the floor under current assumptions.'}</div>
     </div>
     ${covText ? `<p class="lead">${covText}</p>` : ''}
   </div>`
@@ -261,10 +261,14 @@ export async function generateReport(kind, scenario) {
     await Promise.all(
       SCENARIO_KEYS.map(async (k) => {
         try {
-          const fc = await apiGet(`/forecast/${k}`)
-          const weeks = mergeWeeks(fc.weeks || [], weather)
-          const st = statusFromWeeks(weeks)
-          packs[k] = { weeks, status: st.status, finalHeadroom: st.finalHeadroom }
+          // forecast = drivers/weeks · covenant = status/headroom/threshold (autoridad)
+          const [fc, cov] = await Promise.all([apiGet(`/forecast/${k}`), apiGet(`/covenant/${k}`)])
+          packs[k] = {
+            weeks: mergeWeeks(fc.weeks || [], weather),
+            status: cov.summary?.status,
+            finalHeadroom: cov.summary?.final_headroom,
+            threshold: cov.covenant_threshold,
+          }
         } catch {
           /* skip a scenario that fails */
         }
@@ -319,4 +323,3 @@ export async function generateReport(kind, scenario) {
   }
 }
 
-export { COVENANT_THRESHOLD }
