@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { apiPost } from '../api'
+import { apiDownload, apiPost } from '../api'
 import { SCENARIOS } from '../altis/format'
-import { generateReport } from '../altis/reports'
 import { useToast } from './Toast'
 
 /** "Reports" button → weekly / monthly PDF download (real data). */
@@ -14,7 +13,8 @@ export default function ReportMenu({ scenario = 'base' }) {
     setOpen(false)
     setBusy(true)
     try {
-      await generateReport(kind, scenario)
+      // PDF generado server-side (datos reales, sin html2pdf en el browser).
+      await apiDownload(`/reports/download/${scenario}`, `altis-forecast-${scenario}.pdf`)
       toast.success(`${kind === 'weekly' ? 'Weekly' : 'Monthly'} report downloaded`)
     } catch (e) {
       toast.error('Could not generate report', e?.hint || e?.message || String(e))

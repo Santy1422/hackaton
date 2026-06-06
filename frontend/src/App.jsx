@@ -78,7 +78,7 @@ function Dashboard({ user, onLogout }) {
         Altis Groep · ingestion → reconciliation → driver model → scenario engine → role-based
         presentation · single source of truth: <code>forecast_13w</code>
       </footer>
-      <Assistant />
+      <Assistant scenario={scenario} />
     </div>
   )
 }

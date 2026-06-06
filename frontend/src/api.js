@@ -64,6 +64,32 @@ export async function apiPost(path, payload) {
   })
 }
 
+// Descarga un binario (PDF) generado por el backend, con auth. Robusto: no
+// depende de librerías de PDF en el browser (server-side, datos reales).
+export async function apiDownload(path, filename) {
+  let res
+  try {
+    res = await fetch(`${API}/api${path}`, { headers: { ...authHeaders() } })
+  } catch {
+    const e = new Error('Cannot reach the server. Check your connection and try again.')
+    e.code = 'NETWORK'
+    throw e
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw apiError(res, body)
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 4000)
+}
+
 export const eur = (n) =>
   new Intl.NumberFormat('nl-NL', {
     style: 'currency',

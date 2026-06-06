@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from db.database import get_connection, query
 from models.report_narrative import generate_narrative
 
-from ..auth import require_roles
+from ..auth import get_current_user, require_roles
 from ..validation import SCENARIOS, validate_scenario
 
 router = APIRouter(tags=["reports"])
@@ -48,6 +48,24 @@ def get_pdf(token: str):
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="altis-forecast-{token[:8]}.pdf"'},
     )
+
+
+@router.get("/download/{scenario}")
+def download_pdf(scenario: str, user: dict = Depends(get_current_user)):
+    """Genera y devuelve el PDF del informe (server-side, datos reales).
+
+    Robusto: no depende de html2pdf en el browser. Cualquier usuario autenticado.
+    """
+    validate_scenario(scenario)
+    from models.pdf_report import build_pdf
+
+    pdf = build_pdf(scenario)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="altis-forecast-{scenario}.pdf"'},
+    )
+
 
 SCEN_LABEL = {"base": "Base", "wet_qtr": "Wet quarter", "dry_qtr": "Dry quarter"}
 
