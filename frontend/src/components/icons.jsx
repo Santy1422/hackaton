@@ -163,6 +163,7 @@ export const IconChevronRight = (p) => (
 )
 
 // Mapa rol → icono (para el shell del dashboard).
+// eslint-disable-next-line react-refresh/only-export-components
 export const ROLE_ICON = {
   pe_board: IconShield,
   cfo: IconTrending,
@@ -171,6 +172,7 @@ export const ROLE_ICON = {
 }
 
 // Mapa escenario → icono.
+// eslint-disable-next-line react-refresh/only-export-components
 export const SCENARIO_ICON = {
   base: IconSun,
   wet_qtr: IconRain,

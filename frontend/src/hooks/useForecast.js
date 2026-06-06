@@ -9,6 +9,7 @@ export function useApi(path, deps = []) {
 
   useEffect(() => {
     let on = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError(null)
     apiGet(path)
