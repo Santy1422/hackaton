@@ -41,7 +41,11 @@ export default function Assistant({ scenario = 'base' }) {
     bodyRef.current?.scrollTo(0, 1e6)
   }, [msgs, busy])
 
-  // Genera y descarga el PDF de verdad; refleja el estado en el chat.
+  // Descarga directa del PDF server-side (sin mensaje nuevo).
+  const downloadPdf = () =>
+    apiDownload(`/reports/download/${scenario}`, `altis-forecast-${scenario}.pdf`)
+
+  // Primera generación con estado visible en el chat.
   const runReport = async (kind) => {
     const at = { i: 0 }
     setMsgs((m) => {
@@ -49,8 +53,7 @@ export default function Assistant({ scenario = 'base' }) {
       return [...m, { role: 'bot', report: kind, scenario, status: 'working' }]
     })
     try {
-      // PDF server-side (datos reales, sin html2pdf en el browser).
-      await apiDownload(`/reports/download/${scenario}`, `altis-forecast-${scenario}.pdf`)
+      await downloadPdf()
       setMsgs((m) => m.map((x, i) => (i === at.i ? { ...x, status: 'done' } : x)))
     } catch (e) {
       setMsgs((m) => m.map((x, i) => (i === at.i ? { ...x, status: 'error', err: e.message } : x)))
@@ -101,7 +104,7 @@ export default function Assistant({ scenario = 'base' }) {
 
             {msgs.map((m, i) =>
               m.report ? (
-                <ReportMsg key={i} m={m} onRetry={() => runReport(m.report)} />
+                <ReportMsg key={i} m={m} onDownload={downloadPdf} onRetry={() => runReport(m.report)} />
               ) : (
                 <div key={i} className={`asst-msg ${m.role}${m.err ? ' err' : ''}`}>
                   {m.role === 'bot' ? rich(m.text) : m.text}
@@ -131,15 +134,15 @@ export default function Assistant({ scenario = 'base' }) {
   )
 }
 
-function ReportMsg({ m, onRetry }) {
+function ReportMsg({ m, onDownload, onRetry }) {
   const label = m.report === 'monthly' ? 'Monthly' : 'Weekly'
   return (
     <div className={`asst-msg bot report${m.status === 'error' ? ' err' : ''}`}>
       {m.status === 'working' && <>📄 Generating the {label.toLowerCase()} PDF report…</>}
       {m.status === 'done' && (
         <>
-          ✓ {label} PDF report downloaded.
-          <button className="asst-pdf" onClick={onRetry}>📄 Download again</button>
+          ✓ {label} PDF report ready.
+          <button className="asst-pdf" onClick={onDownload}>📄 Download PDF</button>
         </>
       )}
       {m.status === 'error' && (

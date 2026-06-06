@@ -1,7 +1,14 @@
 """FastAPI app — Altis Groep Forecast API."""
 
+import logging
 import os
 from contextlib import asynccontextmanager
+
+# Logs visibles en Railway (INFO): envíos de WhatsApp, webhook, bot.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

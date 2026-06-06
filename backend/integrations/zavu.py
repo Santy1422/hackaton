@@ -35,9 +35,19 @@ def verify_signature(raw_body: bytes, signature: str | None, headers: dict | Non
     secret = os.getenv("ZAVU_WEBHOOK_SECRET")
     if not secret:
         return True
-    if not signature:
-        return False
     headers = {k.lower(): v for k, v in (headers or {}).items()}
+    # La firma puede venir en varios headers según el esquema (Svix usa
+    # `webhook-signature`; Zavu a veces `x-zavu-signature`). Tomamos el primero.
+    if not signature:
+        signature = (
+            headers.get("webhook-signature")
+            or headers.get("svix-signature")
+            or headers.get("x-zavu-signature")
+            or headers.get("zavu-signature")
+        )
+    if not signature:
+        log.warning("verify_signature: no signature header (have: %s)", list(headers.keys()))
+        return False
 
     # tokens de firma (Svix: "v1,<b64> v1,<b64>"; o "sha256=<hex>"; o plano).
     # No partir por "=" a lo bruto: el padding base64 lleva "=".
@@ -60,9 +70,10 @@ def verify_signature(raw_body: bytes, signature: str | None, headers: dict | Non
         except Exception:
             pass
 
-    wid = headers.get("webhook-id") or headers.get("x-zavu-id") or headers.get("zavu-id")
-    wts = (headers.get("webhook-timestamp") or headers.get("x-zavu-timestamp")
-           or headers.get("zavu-timestamp"))
+    wid = (headers.get("webhook-id") or headers.get("svix-id")
+           or headers.get("x-zavu-id") or headers.get("zavu-id"))
+    wts = (headers.get("webhook-timestamp") or headers.get("svix-timestamp")
+           or headers.get("x-zavu-timestamp") or headers.get("zavu-timestamp"))
     msgs = [raw_body]
     if wid and wts:
         msgs.append(f"{wid}.{wts}.".encode() + raw_body)
@@ -138,10 +149,22 @@ def _post(body: dict, to: str) -> dict:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     if sender:
         headers["Zavu-Sender"] = sender
+    log.info("ZAVU → POST to=%s type=%s sender=%s tmpl=%s",
+             to, body.get("messageType"), sender, body.get("content", {}).get("templateId"))
     try:
-        resp = httpx.post(ZAVU_URL, headers=headers, json=body, timeout=15)
-        resp.raise_for_status()
-        msg = resp.json().get("message", {})
+        resp = httpx.post(ZAVU_URL, headers=headers, json=body, timeout=20)
+        if resp.status_code >= 400:
+            log.warning("ZAVU ✗ to=%s http=%s body=%s", to, resp.status_code, resp.text[:600])
+            resp.raise_for_status()
+        data = resp.json()
+        msg = data.get("message", {})
+        log.info("ZAVU ✓ to=%s id=%s status=%s resp=%s",
+                 to, msg.get("id"), msg.get("status"), str(data)[:400])
         return {"sent": True, "id": msg.get("id"), "status": msg.get("status"), "to": to}
+    except httpx.HTTPStatusError as e:
+        detail = e.response.text[:600] if e.response is not None else str(e)
+        log.warning("ZAVU ✗ to=%s HTTPStatusError %s", to, detail)
+        return {"sent": False, "reason": detail, "to": to}
     except Exception as e:
+        log.warning("ZAVU ✗ to=%s error=%s", to, e)
         return {"sent": False, "reason": str(e), "to": to}

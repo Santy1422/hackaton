@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from urllib.parse import quote
 
@@ -17,6 +18,8 @@ from ..validation import err, validate_scenario
 from .reports import SCEN_LABEL, _eur, _scenario_stats
 
 router = APIRouter(tags=["notify"])
+
+log = logging.getLogger("notify")
 
 # Número del bot y template aprobado para envío proactivo.
 WHATSAPP_NUMBER = os.getenv("ZAVU_WHATSAPP_NUMBER", "+15559919064")
@@ -80,6 +83,7 @@ class AskBody(BaseModel):
 @router.post("/whatsapp")
 def notify_whatsapp(body: WhatsAppBody, user: dict = Depends(get_current_user)):
     """Envío directo de un mensaje de WhatsApp (cualquier usuario autenticado)."""
+    log.info("NOTIFY /whatsapp by=%s to=%s", user.get("email"), body.to)
     return send_whatsapp(body.to, body.text)
 
 
@@ -173,11 +177,14 @@ def _reply_with_analysis(frm: str, text: str) -> None:
     """
     from integrations.zavu import send_document
 
+    log.info("WEBHOOK reply start from=%s text=%r", frm, text[:120])
     # 1) Respuesta analítica de Claude (texto)
     try:
-        send_whatsapp(frm, answer_question(text))
-    except Exception:
-        pass
+        ans = answer_question(text)
+        r = send_whatsapp(frm, ans)
+        log.info("WEBHOOK reply text from=%s sent=%s status=%s", frm, r.get("sent"), r.get("status"))
+    except Exception as e:
+        log.warning("WEBHOOK reply text FAILED from=%s err=%s", frm, e)
     # 2) PDF del informe (generado server-side, servido por /api/reports/pdf)
     try:
         from models.pdf_report import build_pdf
@@ -186,9 +193,10 @@ def _reply_with_analysis(frm: str, text: str) -> None:
 
         token = publish_pdf(build_pdf("base"))
         url = f"{_public_base()}/api/reports/pdf/{token}"
-        send_document(frm, url, caption="Altis Forecast — 13-week cash report (PDF)")
-    except Exception:
-        pass
+        r = send_document(frm, url, caption="Altis Forecast — 13-week cash report (PDF)")
+        log.info("WEBHOOK reply pdf from=%s url=%s sent=%s status=%s", frm, url, r.get("sent"), r.get("status"))
+    except Exception as e:
+        log.warning("WEBHOOK reply pdf FAILED from=%s err=%s", frm, e)
 
 
 @router.post("/whatsapp/webhook")
@@ -200,7 +208,10 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     Payload Zavu: { type, senderId, data: { from, text, channel, messageId } }.
     """
     raw = await request.body()
-    if not verify_signature(raw, request.headers.get("x-zavu-signature"), dict(request.headers)):
+    sig_ok = verify_signature(raw, request.headers.get("x-zavu-signature"), dict(request.headers))
+    log.info("WEBHOOK hit sig_ok=%s len=%d body=%s", sig_ok, len(raw or b""), (raw or b"")[:500].decode("utf-8", "replace"))
+    if not sig_ok:
+        log.warning("WEBHOOK rejected: invalid signature")
         return {"ok": False, "reason": "invalid signature"}
 
     import json
@@ -210,15 +221,22 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     except Exception:
         return {"ok": False, "reason": "invalid json"}
 
-    if payload.get("type") not in (None, "message.inbound"):
-        return {"ok": True, "ignored": payload.get("type")}
+    ptype = payload.get("type")
+    # Eventos de estado (delivered/failed/read) → los logueamos para diagnosticar entregas.
+    if ptype not in (None, "message.inbound"):
+        d = payload.get("data", payload)
+        log.info("WEBHOOK status event type=%s status=%s id=%s to=%s reason=%s",
+                 ptype, d.get("status"), d.get("messageId") or d.get("id"), d.get("to"), d.get("error") or d.get("reason"))
+        return {"ok": True, "ignored": ptype}
 
     data = payload.get("data", payload)
     text = data.get("text") or ""
     frm = data.get("from")
     if data.get("messageType", "text") != "text" or not text or not frm:
+        log.info("WEBHOOK inbound ignored (non-text or missing) data=%s", str(data)[:300])
         return {"ok": True, "ignored": "non-text or missing from/text"}
 
+    log.info("WEBHOOK inbound from=%s text=%r → queued", frm, text[:120])
     background_tasks.add_task(_reply_with_analysis, frm, text)
     return {"ok": True, "queued": True, "from": frm}
 
