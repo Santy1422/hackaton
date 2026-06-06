@@ -42,10 +42,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Altis Groep Forecast API", lifespan=lifespan)
 
 # Orígenes permitidos: CORS_ORIGINS (coma-separados) en prod; localhost en dev.
+# Además, por regex, cualquier subdominio de Railway → el frontend deploya y habla
+# con el backend sin tener que conocer/fijar el subdominio exacto.
 _origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:4173")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _origins.split(",") if o.strip()],
+    allow_origin_regex=r"https://.*\.up\.railway\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

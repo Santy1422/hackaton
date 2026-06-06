@@ -455,4 +455,4 @@ def health():
             "forecast_rows": int(fc[0]["n"]),
         }
     except Exception as e:
-        raise HTTPException(500, detail=err("DB_ERROR", f"DuckDB connection failed: {e}"))
+        raise HTTPException(500, detail=err("DB_ERROR", f"DB connection failed: {e}"))
