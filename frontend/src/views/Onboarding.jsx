@@ -240,20 +240,23 @@ export default function Onboarding({ user, onDone }) {
   )
 }
 
-/* ---- WhatsApp activation (asistente MCP + crons) -------------------------- */
+/* ---- WhatsApp activation -------------------------------------------------
+   Sin template aprobado no enviamos por API (eso mostraba "dry-run / no
+   configurado" y parecía roto). En su lugar abrimos WhatsApp directo al número
+   de Altis con el primer mensaje ya escrito (wa.me): un toque y a enviar.
+   ------------------------------------------------------------------------- */
+// Número del asistente de Altis (E.164). Override con VITE_WA_NUMBER si hace falta.
+const WA_NUMBER = (import.meta.env.VITE_WA_NUMBER || '+15559919064').replace(/\D/g, '')
+const WA_DISPLAY = '+1 555 991 9064'
+
 function WhatsAppActivate() {
-  const [st, setSt] = useState('idle') // idle | connecting | active
-  const [phone, setPhone] = useState('')
-  const [err, setErr] = useState(null)
-  const [messages, setMessages] = useState([]) // {dir:'in'|'out', text, note?}
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
   const base = useApi('/covenant/base', [])
 
   // Crons 100% del backend: catálogo + estado persistido por usuario.
   const autos = useApi('/notify/automations', [])
   const [crons, setCrons] = useState([])
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autos.data?.automations) setCrons(autos.data.automations)
   }, [autos.data])
   const toggle = (id) => {
@@ -262,122 +265,46 @@ function WhatsAppActivate() {
     apiPost('/notify/automations', { id, enabled: next }).catch(() => {})
   }
 
-  const welcomeText = () => {
-    const s = base.data?.summary
-    return s
-      ? `🏠 Altis Forecast connected. Covenant (base): ${eurK(s.final_headroom)} headroom — ${s.status}. Ask me anything about the 13-week cash forecast.`
-      : '🏠 Altis Forecast connected. Ask me anything about the 13-week cash forecast.'
-  }
+  // Primer mensaje pre-cargado: lleva el headroom real para arrancar la charla.
+  const s = base.data?.summary
+  const firstMsg = s
+    ? `Hi Altis Forecast 👋 Connect me to the 13-week cash forecast. Covenant (base) is ${eurK(s.final_headroom)} headroom — ${s.status}. What changed this week?`
+    : 'Hi Altis Forecast 👋 Connect me to the 13-week cash forecast.'
+  const waUrl = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(firstMsg)}`
 
-  // Activación REAL: manda un WhatsApp al número via /notify/whatsapp (Zavu).
-  const activate = async () => {
-    const to = phone.trim()
-    if (!to) return
-    setErr(null)
-    setSt('connecting')
-    const text = welcomeText()
-    try {
-      const r = await apiPost('/notify/whatsapp', { to, text })
-      if (r?.sent === false) {
-        // backend en dry-run (sin ZAVU_API_KEY) → avisamos en vez de fingir
-        setErr(r.reason || 'WhatsApp no configurado en el backend (dry-run).')
-        setSt('idle')
-        return
-      }
-      setMessages([{ dir: 'in', text, note: 'delivered' }])
-      setSt('active')
-    } catch (e) {
-      setErr(e.message || 'No se pudo enviar el WhatsApp')
-      setSt('idle')
-    }
-  }
-
-  // Pregunta REAL al asistente (Claude sobre forecast_13w) + push al WhatsApp.
-  const send = async () => {
-    const q = draft.trim()
-    if (!q || sending) return
-    setDraft('')
-    setMessages((m) => [...m, { dir: 'out', text: q }])
-    setSending(true)
-    try {
-      const r = await apiPost('/notify/ask', { question: q, to: phone.trim() })
-      setMessages((m) => [...m, { dir: 'in', text: r.answer, note: r?.result?.sent === false ? '' : 'delivered' }])
-    } catch (e) {
-      setMessages((m) => [...m, { dir: 'in', text: 'No pude responder: ' + (e.message || e) }])
-    } finally {
-      setSending(false)
-    }
-  }
-
-  if (st === 'idle' || st === 'connecting') {
-    const busy = st === 'connecting'
-    return (
-      <div className="wa">
-        <div className="wa-head">
-          <span className="wa-ic">💬</span>
-          <div>
-            <div className="wa-title">Get it on WhatsApp <span className="wa-tag">LIVE</span></div>
-            <div className="wa-sub">
-              Ask the forecast in plain language and schedule automatic pushes. Powered by an MCP
-              wired straight to <code>forecast_13w</code> — same single source of truth.
-            </div>
-          </div>
-        </div>
-        <ul className="wa-feats">
-          <li>Ask: <i>“covenant headroom this week?”</i> → instant answer with the trace</li>
-          <li>Schedule a cron: weekly digest, covenant alerts, monthly PDF</li>
-          <li>Read-only &amp; role-scoped — it never writes back to the ledgers</li>
-        </ul>
-        <div className="wa-row">
-          <input
-            className="wa-input"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+31 6 1234 5678"
-            aria-label="WhatsApp number"
-            disabled={busy}
-            onKeyDown={(e) => e.key === 'Enter' && activate()}
-          />
-          <button className="wa-btn" onClick={activate} disabled={busy || !phone.trim()}>
-            {busy ? 'Sending…' : 'Activate on WhatsApp'}
-          </button>
-        </div>
-        {err && <div className="lf-err" style={{ marginTop: 10 }}>{err}</div>}
-      </div>
-    )
-  }
-
-  // active — chat interactivo real + cron schedule
   return (
-    <div className="wa active">
-      <div className="wa-grid">
-        <div className="wa-phone">
-          <div className="wa-bar">
-            <span className="wa-av">A</span>
-            <div><b>Altis Forecast</b><span>online · secure MCP</span></div>
+    <div className="wa">
+      <div className="wa-head">
+        <span className="wa-ic">💬</span>
+        <div>
+          <div className="wa-title">Get it on WhatsApp <span className="wa-tag">LIVE</span></div>
+          <div className="wa-sub">
+            Ask the forecast in plain language and schedule automatic pushes. Powered by an MCP
+            wired straight to <code>forecast_13w</code> — same single source of truth.
           </div>
-          <div className="wa-chat">
-            <div className="wa-day">TODAY</div>
-            {messages.map((m, i) => (
-              <div key={i} className={'wb ' + m.dir}>
-                {m.text}
-                {m.note && <div className="wb-tr">{m.note === 'delivered' ? '✓✓' : m.note}</div>}
-              </div>
-            ))}
-            {sending && <div className="wb in"><span className="pl-spin" /></div>}
-          </div>
-          <form className="wa-ask" onSubmit={(e) => { e.preventDefault(); send() }}>
-            <input
-              className="wa-input"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Ask the forecast…"
-              aria-label="Ask the forecast"
-            />
-            <button className="wa-btn" type="submit" disabled={sending || !draft.trim()}>Send</button>
-          </form>
         </div>
-        <div className="wa-cron">
+      </div>
+      <ul className="wa-feats">
+        <li>Ask: <i>“covenant headroom this week?”</i> → instant answer with the trace</li>
+        <li>Schedule a cron: weekly digest, covenant alerts, monthly PDF</li>
+        <li>Read-only &amp; role-scoped — it never writes back to the ledgers</li>
+      </ul>
+
+      <div className="wa-preview">
+        <span className="wa-preview-lab">YOUR FIRST MESSAGE</span>
+        <div className="wb out">{firstMsg}</div>
+      </div>
+
+      <a className="wa-cta" href={waUrl} target="_blank" rel="noopener noreferrer">
+        <span className="wa-cta-ic" aria-hidden="true">💬</span>
+        Open WhatsApp — one tap to send
+      </a>
+      <div className="wa-cta-note">
+        Opens a chat with Altis Forecast (<b>{WA_DISPLAY}</b>) with the message ready — just hit send.
+      </div>
+
+      {crons.length > 0 && (
+        <div className="wa-cron" style={{ marginTop: 16 }}>
           <div className="wa-cron-h">SCHEDULED AUTOMATIONS</div>
           {crons.map((c) => (
             <button key={c.id} className={'cron ' + (c.enabled ? 'on' : '')} onClick={() => toggle(c.id)}>
@@ -387,10 +314,7 @@ function WhatsAppActivate() {
           ))}
           <div className="wa-cron-note">Crons run server-side against the latest sync. Editable any time from Settings.</div>
         </div>
-      </div>
-      <div className="wa-active-foot">
-        <span className="onb-dot" /> WhatsApp connected to <b>{phone}</b> · {crons.filter((c) => c.enabled).length} automations active
-      </div>
+      )}
     </div>
   )
 }
