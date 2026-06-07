@@ -76,7 +76,19 @@ def verify_signature(raw_body: bytes, signature: str | None, headers: dict | Non
     log.warning("verify_signature: MISMATCH t=%s v1=%s… body_len=%d", t, v1[:12], len(body))
     return False
 # Sender ID por defecto (overridable por env ZAVU_SENDER).
-DEFAULT_SENDER = "kd7fv57av8kwqgncjzckcrnnn9885nv4"
+# El sender bueno (aprobado, entrega a números reales) es +1 785-447-4062.
+DEFAULT_SENDER = "kd7evvzpnt76thf9r9gs8yh4hx86cb1x"
+# Sender sandbox de Meta (+1 555-991-9064): solo entrega a destinatarios de
+# prueba y devuelve #131037 con números reales. Si el env quedó apuntando ahí,
+# lo ignoramos y usamos el bueno.
+_DEPRECATED_SENDERS = {"kd7fv57av8kwqgncjzckcrnnn9885nv4"}
+
+
+def _resolve_sender() -> str:
+    s = os.getenv("ZAVU_SENDER", "").strip()
+    if not s or s in _DEPRECATED_SENDERS:
+        return DEFAULT_SENDER
+    return s
 
 
 def normalize_to(num: str) -> str:
@@ -132,7 +144,7 @@ def send_document(to: str, media_url: str, caption: str | None = None) -> dict:
 
 def _post(body: dict, to: str) -> dict:
     api_key = os.getenv("ZAVU_API_KEY")
-    sender = os.getenv("ZAVU_SENDER", DEFAULT_SENDER)
+    sender = _resolve_sender()
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     if sender:
         headers["Zavu-Sender"] = sender

@@ -246,8 +246,8 @@ export default function Onboarding({ user, onDone }) {
    de Altis con el primer mensaje ya escrito (wa.me): un toque y a enviar.
    ------------------------------------------------------------------------- */
 // Número del asistente de Altis (E.164). Override con VITE_WA_NUMBER si hace falta.
-const WA_NUMBER = (import.meta.env.VITE_WA_NUMBER || '+15559919064').replace(/\D/g, '')
-const WA_DISPLAY = '+1 555 991 9064'
+const WA_NUMBER = (import.meta.env.VITE_WA_NUMBER || '+17854474062').replace(/\D/g, '')
+const WA_DISPLAY = '+1 785 447 4062'
 
 function WhatsAppActivate() {
   const base = useApi('/covenant/base', [])
@@ -277,26 +277,12 @@ function WhatsAppActivate() {
       <div className="wa-head">
         <span className="wa-ic">💬</span>
         <div>
-          <div className="wa-title">Get it on WhatsApp <span className="wa-tag" style={{ background: '#C8893A' }}>DEMO</span></div>
+          <div className="wa-title">Get it on WhatsApp <span className="wa-tag">LIVE</span></div>
           <div className="wa-sub">
             Ask the forecast in plain language and schedule automatic pushes. Powered by an MCP
             wired straight to <code>forecast_13w</code> — same single source of truth.
           </div>
         </div>
-      </div>
-
-      <div
-        className="onb-note onb-note-err"
-        style={{ marginTop: 12, alignItems: 'flex-start', lineHeight: 1.45 }}
-      >
-        <span>
-          ⚠ <b>WhatsApp delivery is not active yet.</b> The assistant and PDF are generated
-          correctly, but outbound messages can’t be delivered through the WhatsApp API until the
-          sender number’s <i>display name</i> is approved by Meta (current number is a sandbox
-          number — error <code>#131037</code>). This is a Meta account step, not a product issue.
-          Use the <b>in-app assistant</b> (the “Ask AI” button) for the live demo — it runs the same
-          engine and downloads the same PDF.
-        </span>
       </div>
       <ul className="wa-feats">
         <li>Ask: <i>“covenant headroom this week?”</i> → instant answer with the trace</li>
@@ -314,8 +300,8 @@ function WhatsAppActivate() {
         Open WhatsApp — one tap to send
       </a>
       <div className="wa-cta-note">
-        Opens a chat with Altis Forecast (<b>{WA_DISPLAY}</b>) with the message ready. Note: replies
-        only deliver once the sender number is approved by Meta (see note above).
+        Opens a chat with Altis Forecast (<b>{WA_DISPLAY}</b>) with the message ready — just hit
+        send, and the assistant replies with the analysis and the PDF report.
       </div>
 
       {crons.length > 0 && (

@@ -22,7 +22,7 @@ router = APIRouter(tags=["notify"])
 log = logging.getLogger("notify")
 
 # Número del bot y template aprobado para envío proactivo.
-WHATSAPP_NUMBER = os.getenv("ZAVU_WHATSAPP_NUMBER", "+15559919064")
+WHATSAPP_NUMBER = os.getenv("ZAVU_WHATSAPP_NUMBER", "+17854474062")
 TEMPLATE_ID = os.getenv("ZAVU_TEMPLATE_ID", "")
 
 # Catálogo de crons de WhatsApp (single source of truth, server-side).
