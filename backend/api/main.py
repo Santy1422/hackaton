@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routes import (
     audit,
     auth,
+    chat,
     covenant,
     data,
     forecast,
@@ -62,6 +63,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth")
+app.include_router(chat.router, prefix="/api/chat")
 app.include_router(insights.router, prefix="/api/insights")
 app.include_router(forecast.router, prefix="/api/forecast")
 app.include_router(audit.router, prefix="/api/audit")
